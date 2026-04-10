@@ -1,0 +1,85 @@
+import os
+import sys
+dir_path = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(os.path.abspath(os.path.join(dir_path, '..')))
+import jax
+# jax.config.update('jax_platform_name', 'cpu')
+import jax.numpy as jnp
+jax.config.update("jax_compilation_cache_dir", "./jax_cache")
+jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+
+
+import numpy as np
+import mujoco
+import mujoco.viewer
+import numpy as np
+from gym_quadruped.utils.mujoco.visual import render_sphere ,render_vector
+import mpx.utils.mpc_wrapper as mpc_wrapper
+import mpx.config.config_spot as config
+
+model = mujoco.MjModel.from_xml_path(config.model_path)
+data = mujoco.MjData(model)
+sim_frequency = 200.0
+model.opt.timestep = 1/sim_frequency
+
+contact_id = []
+for name in config.contact_frame:
+    contact_id.append(mujoco.mj_name2id(model,mujoco.mjtObj.mjOBJ_GEOM,name))
+mpc = mpc_wrapper.MPCControllerWrapper(config)
+data.qpos = jnp.concatenate([config.p0, config.quat0,config.q0])
+
+from timeit import default_timer as timer
+
+ids = []
+tau = jnp.zeros(config.n_joints)
+with mujoco.viewer.launch_passive(model, data) as viewer:
+    mujoco.mj_step(model, data)
+    viewer.sync()
+    delay = int(0*sim_frequency)
+    print('Delay: ',delay)
+    mpc.robot_height = config.robot_height
+    mpc.reset(data.qpos.copy(),data.qvel.copy())
+    counter = 0
+    while viewer.is_running():
+        
+        qpos = data.qpos.copy()
+        qvel = data.qvel.copy()
+        if counter % (sim_frequency / config.mpc_frequency) == 0 or counter == 0:
+            
+            if counter != 0:
+                for i in range(delay):
+                    qpos = data.qpos.copy()
+                    qvel = data.qvel.copy()
+                    tau_fb = -3*(qvel[6:6+config.n_joints])
+                    # tau_fb = 10*(q-qpos[7:7+config.n_joints]) -2*(qvel[6:6+config.n_joints])
+                    data.ctrl = tau + tau_fb
+                    mujoco.mj_step(model, data)
+                    counter += 1
+            start = timer()
+            ref_base_lin_vel = jnp.array([0.0,0,0])
+            ref_base_ang_vel = jnp.array([0,0,0.1])
+            
+            # x0 = jnp.concatenate([qpos, qvel,jnp.zeros(3*config.n_contact)])
+            input = np.array([ref_base_lin_vel[0],ref_base_lin_vel[1],ref_base_lin_vel[2],
+                           ref_base_ang_vel[0],ref_base_ang_vel[1],ref_base_ang_vel[2],
+                           config.robot_height])
+            
+            #set this to the current contact state to use the blind step adaptation
+            contact = np.zeros(config.n_contact)
+        
+            start = timer()
+            tau, q, dq  = mpc.run(qpos,qvel,input,contact)   
+            stop = timer()
+            
+            print(f"Time elapsed: {stop-start} qpos {qpos} qvel {qvel} ")            
+        counter += 1        
+        
+        tau_fb = 10*(q-qpos[7:7+config.n_joints])-3*(qvel[6:6+config.n_joints])
+        data.ctrl = tau + tau_fb
+        mujoco.mj_step(model, data)
+        viewer.sync()
+        
+    
+    
+
