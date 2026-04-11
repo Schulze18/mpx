@@ -79,7 +79,7 @@ Qleg = jnp.diag(jnp.tile(jnp.array([1e4, 1e4, 1e5]), n_contact))
 
 W = jax.scipy.linalg.block_diag(Qp, Qrot, Qq, Qdp, Qomega, Qdq, Qleg, Qtau, Q_grf)
 
-use_terrain_estimation = True
+use_terrain_estimation = False
 
 cost = partial(mpc_objectives.quadruped_wb_obj, True)
 hessian_approx = partial(mpc_objectives.quadruped_wb_hessian_gn, True)

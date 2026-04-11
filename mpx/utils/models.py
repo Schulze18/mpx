@@ -153,7 +153,7 @@ def quadruped_arm_wb_dynamics(model, mjx_model, contact_id, body_id, n_joints, d
     contact = parameter[t, :4]
 
     # Create the torque vector, with zeros for the base and control inputs for the joints
-    tau = jnp.concatenate([jnp.zeros(6), u])
+    tau = jnp.concatenate([jnp.zeros(6), u[:n_joints]])
 
     # Get the positions of the contact points on the legs
     FL_leg = mjx_data.geom_xpos[contact_id[0]]
@@ -189,6 +189,7 @@ def quadruped_arm_wb_dynamics(model, mjx_model, contact_id, body_id, n_joints, d
     # Update the velocity using the computed forces
     v = x[n_joints+7:13+2*n_joints] + jax.scipy.linalg.cho_solve((M, False), tau - D + J @ grf) * dt
     # Perform semi-implicit Euler integration to update the position and orientation
+
     p = x[:3] + v[:3] * dt
     quat = math.quat_integrate(x[3:7], v[3:6], dt)
     q = x[7:7+n_joints] + v[6:6+n_joints] * dt

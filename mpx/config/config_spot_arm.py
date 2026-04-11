@@ -24,16 +24,16 @@ mpc_frequency = 50
 
 # Gait parameters.
 timer_t = jnp.array([0.5, 0.0, 0.0, 0.5])
-duty_factor = 0.7
+duty_factor = 0.65
 step_freq = 1.0
 step_height = 0.08
-initial_height = 0.46
-robot_height = 0.35
+initial_height = 0.40
+robot_height = 0.40
 
 # Initial base state and nominal joint posture.
 p0 = jnp.array([0.0, 0.0, initial_height])
 quat0 = jnp.array([1.0, 0.0, 0.0, 0.0])
-q0 = jnp.array([0, -3.14, 3.06, 0, 0, 0, 0, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8])
+q0 = jnp.array([0, -2.14, 2.06, 0, 0, 0, 0, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8])
 q0_init = q0
 
 # Nominal foot positions in the body frame at the home posture.
@@ -57,20 +57,32 @@ u_ref = jnp.zeros(m)
 # Cost weights.
 Qp = jnp.diag(jnp.array([0.0, 0.0, 1e4]))
 Qrot = jnp.diag(jnp.array([1000.0, 1000.0, 0.0])) * 10
-Qq = jnp.diag(jnp.ones(n_joints)) * 1e0
+# Qq = jnp.diag(jnp.ones(n_joints)) * 1e0
+Qq = jnp.diag(jnp.concatenate([jnp.ones(7) * 1e3, jnp.ones(12) * 1e0]))
 Qdp = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e3
-Qomega = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e2
-Qdq = jnp.diag(jnp.ones(n_joints)) * 1e-1
+Qomega = jnp.diag(jnp.array([1.0, 1.0, 10.0])) * 1e2
+Qdq = jnp.diag(jnp.ones(n_joints)) * 1e-0
 Qtau = jnp.diag(jnp.ones(n_joints)) * 1e-2
-Q_grf = jnp.diag(jnp.ones(3 * n_contact)) * 1e-3
+Q_grf = jnp.diag(jnp.ones(3 * n_contact)) * 1e-2
 Qleg = jnp.diag(jnp.tile(jnp.array([1e4, 1e4, 1e5]), n_contact))
+
+# Qp = jnp.diag(jnp.array([0.0, 0.0, 1e4]))
+# Qrot = jnp.diag(jnp.array([1000.0, 1000.0, 0.0]))
+# # Qq = jnp.diag(jnp.ones(n_joints)) * 1e0
+# Qq = jnp.diag(jnp.concatenate([jnp.ones(7) * 1e3, jnp.ones(12) * 1e0]))
+# Qdp = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e3
+# Qomega = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e2
+# Qdq = jnp.diag(jnp.ones(n_joints)) * 1e-1
+# Qtau = jnp.diag(jnp.ones(n_joints)) * 1e-2
+# Q_grf = jnp.diag(jnp.ones(3 * n_contact)) * 1e-3
+# Qleg = jnp.diag(jnp.tile(jnp.array([1e4, 1e4, 1e5]), n_contact))
 W = jax.scipy.linalg.block_diag(Qp, Qrot, Qq, Qdp, Qomega, Qdq, Qleg, Qtau, Q_grf)
 
-use_terrain_estimation = True
+use_terrain_estimation = False
 
-cost = partial(mpc_objectives.quadruped_wb_obj, True)
-hessian_approx = partial(mpc_objectives.quadruped_wb_hessian_gn, True)
-dynamics = mpc_dyn_model.quadruped_arm_wb_dynamics
+cost = partial(mpc_objectives.quadruped_arm_wb_obj, True)
+hessian_approx = partial(mpc_objectives.quadruped_arm_wb_hessian_gn, True)
+dynamics = mpc_dyn_model.quadruped_wb_dynamics
 
 # Torque bounds used by the MPC cost / clipping.
 max_torque = 500
