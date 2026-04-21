@@ -37,12 +37,17 @@ q0 = jnp.array([0, -2.14, 2.06, 0, 0, 0, 0, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.
 q0_init = q0
 
 # Nominal foot positions in the body frame at the home posture.
+# p_legs0 = jnp.array([
+#     0.34, 0.175, 0.0,
+#     0.34, -0.175, 0.0,
+#     -0.34, 0.175, 0.0,
+#     -0.34, -0.175, 0.0,
+# ])
 p_legs0 = jnp.array([
-    0.34, 0.175, 0.0,
-    0.34, -0.175, 0.0,
-    -0.34, 0.175, 0.0,
-    -0.34, -0.175, 0.0,
-])
+        0.26635823,  0.1658,      0.03254209,
+        0.26635823, -0.1658,      0.03254209,
+        -0.32934177,  0.1658,      0.03254209,
+        -0.32934177, -0.1658,      0.03254209])
 
 # Dimensions.
 n_joints = 12 + 7
@@ -58,13 +63,26 @@ u_ref = jnp.zeros(m)
 Qp = jnp.diag(jnp.array([0.0, 0.0, 1e4]))
 Qrot = jnp.diag(jnp.array([1000.0, 1000.0, 0.0])) * 10
 # Qq = jnp.diag(jnp.ones(n_joints)) * 1e0
-Qq = jnp.diag(jnp.concatenate([jnp.ones(7) * 1e3, jnp.ones(12) * 1e0]))
+Qq = jnp.diag(jnp.concatenate([jnp.ones(7) * 1e3, jnp.ones(12) * 1e-1]))
 Qdp = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e3
 Qomega = jnp.diag(jnp.array([1.0, 1.0, 10.0])) * 1e2
-Qdq = jnp.diag(jnp.ones(n_joints)) * 1e-0
+Qdq = jnp.diag(jnp.ones(n_joints)) * 1e-1
 Qtau = jnp.diag(jnp.ones(n_joints)) * 1e-2
 Q_grf = jnp.diag(jnp.ones(3 * n_contact)) * 1e-2
 Qleg = jnp.diag(jnp.tile(jnp.array([1e4, 1e4, 1e5]), n_contact))
+
+# Values for go2
+# Qp    = jnp.diag(jnp.array([0, 0, 1e4]))  # Cost matrix for position
+# Qrot  = jnp.diag(jnp.array([1000, 1000, 0])) * 10  # Cost matrix for rotation
+# Qq    = jnp.diag(jnp.concatenate([jnp.ones(7) * 1e-1, jnp.ones(12) * 1e-1])) # Cost matrix for joint angles
+# Qdp   = jnp.diag(jnp.array([1, 1, 1])) * 5e3  # Cost matrix for position derivatives
+# Qomega= jnp.diag(jnp.array([1, 1, 1])) * 1e2  # Cost matrix for angular velocity
+# Qdq   = jnp.diag(jnp.ones(n_joints)) * 1e-1  # Cost matrix for joint angle derivatives
+# Qtau  = jnp.diag(jnp.ones(n_joints)) * 1e-1  # Cost matrix for torques
+# Q_grf = jnp.diag(jnp.ones(3*n_contact)) * 1e-2  # Cost matrix for ground reaction forces
+
+# For the leg contact cost, repeat the unit cost for each contact point.
+# Qleg = jnp.diag(jnp.tile(jnp.array([1e4,1e4,1e5]),n_contact))
 
 # Qp = jnp.diag(jnp.array([0.0, 0.0, 1e4]))
 # Qrot = jnp.diag(jnp.array([1000.0, 1000.0, 0.0]))
@@ -79,11 +97,26 @@ Qleg = jnp.diag(jnp.tile(jnp.array([1e4, 1e4, 1e5]), n_contact))
 W = jax.scipy.linalg.block_diag(Qp, Qrot, Qq, Qdp, Qomega, Qdq, Qleg, Qtau, Q_grf)
 
 use_terrain_estimation = False
+_state_extra = n - (13 + 2 * n_joints + 3 * n_contact)
+initial_state = jnp.concatenate(
+    [p0, quat0, q0, jnp.zeros(6 + n_joints), p_legs0, jnp.zeros(_state_extra)]
+)
 
-cost = partial(mpc_objectives.quadruped_arm_wb_obj, True)
-hessian_approx = partial(mpc_objectives.quadruped_arm_wb_hessian_gn, True)
-dynamics = mpc_dyn_model.quadruped_wb_dynamics
+cost = partial(mpc_objectives.quadruped_arm_wb_obj, True, n_joints, n_contact, N)
+hessian_approx = None
+
+def dynamics(model, mjx_model, contact_id, body_id):
+    return partial(
+        mpc_dyn_model.quadruped_wb_dynamics,
+        model,
+        mjx_model,
+        contact_id,
+        body_id,
+        n_joints,
+        dt,
+    )
 
 # Torque bounds used by the MPC cost / clipping.
 max_torque = 500
 min_torque = -500
+solver_mode = "primal_dual"  # Solver mode for the optimization problem
