@@ -64,9 +64,24 @@ W = jax.scipy.linalg.block_diag(Qp, Qrot, Qq, Qdp, Qomega, Qdq, Qleg, Qtau,Q_grf
 
 use_terrain_estimation = True  # Flag to use terrain estimation
 
-cost = partial(mpc_objectives.quadruped_wb_obj,True)
-hessian_approx = partial(mpc_objectives.quadruped_wb_hessian_gn,True)
-dynamics = mpc_dyn_model.quadruped_wb_dynamics
+_state_extra = n - (13 + 2 * n_joints + 3 * n_contact)
+initial_state = jnp.concatenate(
+    [p0, quat0, q0, jnp.zeros(6 + n_joints), p_legs0, jnp.zeros(_state_extra)]
+)
+
+cost = partial(mpc_objectives.quadruped_wb_obj, True, n_joints, n_contact, N)
+hessian_approx = None
+
+def dynamics(model, mjx_model, contact_id, body_id):
+    return partial(
+        mpc_dyn_model.quadruped_wb_dynamics,
+        model,
+        mjx_model,
+        contact_id,
+        body_id,
+        n_joints,
+        dt,
+    )
 # dynamics = mpc_dyn_model.quadruped_wb_dynamics_learned_contact_model
 # dynamics = mpc_dyn_model.quadruped_wb_dynamics_explicit_contact
 max_torque = 25

@@ -67,8 +67,8 @@ inertia = jnp.array([[0.2310941359705289, -0.0014987128245817424, -0.02140046899
 grf_ref = jnp.zeros(3*n_contact)  # Reference torques (all zeros)
 u_ref = jnp.concatenate([grf_ref])  # Reference controls (concatenated torques)
 
-Kp = jnp.diag(jnp.tile(jnp.array([100,100,100]),n_contact))
-Kd = jnp.diag(jnp.tile(jnp.array([5,5,5]),n_contact))
+Kp = jnp.diag(jnp.tile(jnp.array([500,500,500]),n_contact))
+Kd = jnp.diag(jnp.tile(jnp.array([20,20,20]),n_contact))
 
 # Cost matrices (diagonal matrices created using jnp.diag)
 Qp    = jnp.diag(jnp.array([0, 0, 1e4]))  # Cost matrix for position

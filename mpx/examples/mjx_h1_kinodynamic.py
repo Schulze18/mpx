@@ -13,8 +13,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
-import mpx.config.config_h1 as config
-import mpx.utils.mpc_wrapper as mpc_wrapper
+import mpx.config.config_h1_kinodynamic as config
 import mpx.utils.sim as sim_utils
 
 jax.config.update("jax_compilation_cache_dir", "./jax_cache")
@@ -44,7 +43,7 @@ def main(steps=500):
     sim_frequency = 500.0
     model.opt.timestep = 1 / sim_frequency
 
-    mpc = mpc_wrapper.MPCWrapper(config, limited_memory=True)
+    mpc = config.MPCWrapper(config, limited_memory=True)
     command_handle = sim_utils.KeyboardVelocityCommand()
     solve_mpc = _build_solve_fn(mpc)
     reset_mpc = jax.jit(mpc.reset)
@@ -55,7 +54,6 @@ def main(steps=500):
     foot = mpc.foot_positions(data.qpos.copy())
     mpc_data = reset_mpc(mpc.make_data(), data.qpos.copy(), data.qvel.copy(), foot)
 
-    # Warm up the jitted MPC call so the printed timings are steady-state.
     warm_command = jnp.asarray(command_handle.mpc_input(config.robot_height))
     warm_contact = jnp.zeros(config.n_contact)
     mpc_data, tau = solve_mpc(
@@ -98,7 +96,7 @@ def main(steps=500):
             tau = jnp.clip(tau, config.min_torque, config.max_torque)
             print(f"MPC time: {1e3 * (stop - start):.2f} ms")
 
-        data.ctrl = np.asarray(tau - 3.0 * qvel[6 : 6 + config.n_joints])
+        data.ctrl = np.asarray(tau)
         mujoco.mj_step(model, data)
         counter += 1
 

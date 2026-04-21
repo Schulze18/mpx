@@ -43,27 +43,27 @@
     <material name="black" rgba="0.1 0.1 0.1 1"/>
     <material name="white" rgba="1 1 1 1"/>
 
-    <mesh file="pelvis.stl"/>
-    <mesh file="left_hip_yaw_link.stl"/>
-    <mesh file="left_hip_roll_link.stl"/>
-    <mesh file="left_hip_pitch_link.stl"/>
-    <mesh file="left_knee_link.stl"/>
-    <mesh file="left_ankle_link.stl"/>
-    <mesh file="right_hip_yaw_link.stl"/>
-    <mesh file="right_hip_roll_link.stl"/>
-    <mesh file="right_hip_pitch_link.stl"/>
-    <mesh file="right_knee_link.stl"/>
-    <mesh file="right_ankle_link.stl"/>
-    <mesh file="torso_link.stl"/>
-    <mesh file="left_shoulder_pitch_link.stl"/>
-    <mesh file="left_shoulder_roll_link.stl"/>
-    <mesh file="left_shoulder_yaw_link.stl"/>
-    <mesh file="left_elbow_link.stl"/>
-    <mesh file="right_shoulder_pitch_link.stl"/>
-    <mesh file="right_shoulder_roll_link.stl"/>
-    <mesh file="right_shoulder_yaw_link.stl"/>
-    <mesh file="right_elbow_link.stl"/>
-    <mesh file="logo_link.stl"/>
+    <mesh file="./assets/pelvis.stl"/>
+    <mesh file="./assets/left_hip_yaw_link.stl"/>
+    <mesh file="./assets/left_hip_roll_link.stl"/>
+    <mesh file="./assets/left_hip_pitch_link.stl"/>
+    <mesh file="./assets/left_knee_link.stl"/>
+    <mesh file="./assets/left_ankle_link.stl"/>
+    <mesh file="./assets/right_hip_yaw_link.stl"/>
+    <mesh file="./assets/right_hip_roll_link.stl"/>
+    <mesh file="./assets/right_hip_pitch_link.stl"/>
+    <mesh file="./assets/right_knee_link.stl"/>
+    <mesh file="./assets/right_ankle_link.stl"/>
+    <mesh file="./assets/torso_link.stl"/>
+    <mesh file="./assets/left_shoulder_pitch_link.stl"/>
+    <mesh file="./assets/left_shoulder_roll_link.stl"/>
+    <mesh file="./assets/left_shoulder_yaw_link.stl"/>
+    <mesh file="./assets/left_elbow_link.stl"/>
+    <mesh file="./assets/right_shoulder_pitch_link.stl"/>
+    <mesh file="./assets/right_shoulder_roll_link.stl"/>
+    <mesh file="./assets/right_shoulder_yaw_link.stl"/>
+    <mesh file="./assets/right_elbow_link.stl"/>
+    <mesh file="./assets/logo_link.stl"/>
   </asset>
 
   <worldbody>

@@ -4,6 +4,7 @@ import mpx.utils.models as mpc_dyn_model
 import mpx.utils.objectives as mpc_objectives
 import os 
 import sys 
+from functools import partial
 dir_path = os.path.dirname(os.path.realpath(__file__))
 model_path = os.path.abspath(os.path.join(dir_path, '..')) + '/data/unitree_h1/mjx_h1_walk_real_feet.xml'  # Path to the MuJoCo model XML file
 # Joint names and related configuration
@@ -75,9 +76,26 @@ W = jax.scipy.linalg.block_diag(Qp, Qrot, Qq, Qdp, Qomega, Qdq, Qleg, Qtau, Qgrf
 
 use_terrain_estimation = False  # Flag to use terrain estimation
 
-cost = mpc_objectives.h1_wb_obj
-hessian_approx = mpc_objectives.h1_wb_hessian_gn
-dynamics = mpc_dyn_model.h1_wb_dynamics
+_state_extra = n - (13 + 2 * n_joints + 3 * n_contact)
+initial_state = jnp.concatenate(
+    [p0, quat0, q0, jnp.zeros(6 + n_joints), p_legs0, jnp.zeros(_state_extra)]
+)
+
+cost = partial(mpc_objectives.h1_wb_obj, n_joints, n_contact, N)
+hessian_approx = None
+
+def dynamics(model, mjx_model, contact_id, body_id):
+    return partial(
+        mpc_dyn_model.h1_wb_dynamics,
+        model,
+        mjx_model,
+        contact_id,
+        body_id,
+        n_joints,
+        dt,
+    )
+
+solver_mode = "primal_dual"  # Solver mode for the optimization problem
 
 max_torque = 1000
 min_torque = -1000  

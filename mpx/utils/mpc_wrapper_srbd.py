@@ -6,15 +6,9 @@ import mpx.utils.models as mpc_dyn_model
 import mpx.utils.objectives as mpc_objectives
 import mujoco 
 from mujoco import mjx
-import mpx.primal_dual_ilqr.primal_dual_ilqr.optimizers as optimizers
+import mpx.jax_ocp_solvers.optimizers as optimizers
 from jax import dlpack as jax_dlpack
 from timeit import default_timer as timer
-# Try to import torch for dlpack conversion, but continue if torch is not available
-try:
-    from torch.utils import dlpack as torch_dlpack
-except ImportError:
-    torch_dlpack = None
-    print("Warning: torch not installed. torch_run functionality will not be available.")
 
 class BatchedMPCControllerWrapper:
     def __init__(self, config, n_env):
@@ -140,24 +134,10 @@ class BatchedMPCControllerWrapper:
         
         return 0
 
-    def torch_run(self, x0_torch, input_torch, foot_op_torch):
-        #Runs one MPC update using the current state, input, and foot positions.
-        x0 = jax_dlpack.from_dlpack(x0_torch)
-        input = jax_dlpack.from_dlpack(input_torch)
-        foot_op = jax_dlpack.from_dlpack(foot_op_torch)
-
-        self.run(x0, input, foot_op)
-
-        return 0
     
     def whole_body_run(self,qpos,qvel):
         return self._whole_body_interface(qpos,qvel,self.grf,self.foot_ref,self.foot_ref_dot,self.contact)
     
-    def torch_whole_body_run(self,qpos,qvel):
-        qpos = jax_dlpack.from_dlpack(qpos)
-        qvel = jax_dlpack.from_dlpack(qvel)
-        tau = self.whole_body_run(qpos,qvel)
-        return torch_dlpack.from_dlpack(tau) 
     
     def reset(self):
         """

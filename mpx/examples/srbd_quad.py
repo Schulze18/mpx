@@ -1,99 +1,140 @@
+import argparse
 import os
 import sys
-os.environ.update({
-  "NCCL_LL128_BUFFSIZE": "-2",
-  "NCCL_LL_BUFFSIZE": "-2",
-   "NCCL_PROTO": "SIMPLE,LL,LL128",
- })
-import jax.numpy as jnp
-import jax
+import time
+from timeit import default_timer as timer
 
+dir_path = os.path.dirname(os.path.realpath(__file__))
+sys.path.append(os.path.abspath(os.path.join(dir_path, "..")))
+os.environ.setdefault("XLA_FLAGS", "--xla_gpu_enable_command_buffer=")
+
+import jax
+import jax.numpy as jnp
+import mujoco
+import mujoco.viewer
 import numpy as np
+
 import mpx.config.config_srbd as config
 import mpx.utils.mpc_wrapper_srbd as mpc_wrapper_srbd
+import mpx.utils.sim as sim_utils
 
-gpu_device = jax.devices('gpu')[0]
-jax.default_device(gpu_device)
-
-from gym_quadruped.quadruped_env import QuadrupedEnv
-import numpy as np
-from gym_quadruped.utils.mujoco.visual import render_sphere , render_vector
+jax.config.update("jax_compilation_cache_dir", "./jax_cache")
+jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 
 
-robot_name = "aliengo"   # "aliengo", "mini_cheetah", "go2", "hyqreal", ...
-scene_name = "flat"
-robot_feet_geom_names = dict(FL='FL',FR='FR', RL='RL', RR='RR' )
-robot_leg_joints = dict(FL=['FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint', ],
-                        FR=['FR_hip_joint', 'FR_thigh_joint', 'FR_calf_joint', ],
-                        RL=['RL_hip_joint', 'RL_thigh_joint', 'RL_calf_joint'],
-                        RR=['RR_hip_joint', 'RR_thigh_joint', 'RR_calf_joint', ])
-mpc_frequency = config.mpc_frequency
-state_observables_names = tuple(QuadrupedEnv.ALL_OBS)  # return all available state observables
+def _reset_to_initial_state(model, data):
+    if model.nkey > 0:
+        mujoco.mj_resetDataKeyframe(model, data, 0)
+        data.qvel[:] = 0.0
+    else:
+        data.qpos = np.asarray(jnp.concatenate([config.p0, config.quat0, config.q0]))
+        data.qvel[:] = 0.0
+    mujoco.mj_forward(model, data)
 
-sim_frequency = config.whole_body_frequency
 
-env = QuadrupedEnv(robot=robot_name,
-                   scene=scene_name,
-                   sim_dt = 1/sim_frequency,  # Simulation time step [s]
-                   ref_base_lin_vel=0.0, # Constant magnitude of reference base linear velocity [m/s]
-                   ground_friction_coeff=0.7,  # pass a float for a fixed value
-                   base_vel_command_type="human",  # "forward", "random", "forward+rotate", "human"
-                   state_obs_names=state_observables_names,  # Desired quantities in the 'state'
-                   )
-obs = env.reset(random=False)
-env.render()
+def _srbd_state(qpos, qvel):
+    return jnp.concatenate(
+        [
+            jnp.asarray(qpos[:3]),
+            jnp.asarray(qpos[3:7]),
+            jnp.asarray(qvel[:3]),
+            jnp.asarray(qvel[3:6]),
+        ]
+    )
 
-mpc = mpc_wrapper_srbd.BatchedMPCControllerWrapper(config, n_env=1)
-counter = 0
-ids = []
-for i in range(config.N*5):
-     ids.append(render_sphere(viewer=env.viewer,
-              position = np.array([0,0,0]),
-              diameter = 0.01,
-              color=[1,0,0,1]))
-mpc_time = 0
-mpc_counter = 0
-dfoot_ref = []
-dfoot = []
-foot_ref = []
-foot = []
 
-while env.viewer.is_running():
+def main(headless=False, steps=500, scene="flat"):
+    model = mujoco.MjModel.from_xml_path(
+        dir_path + f"/../data/aliengo/scene_{scene}.xml"
+    )
+    data = mujoco.MjData(model)
+    sim_frequency = float(config.whole_body_frequency)
+    model.opt.timestep = 1.0 / sim_frequency
 
-    qpos = env.mjData.qpos
-    qvel = env.mjData.qvel
+    contact_ids = sim_utils.geom_ids(model, config.contact_frame)
+    command_handle = sim_utils.KeyboardVelocityCommand(vx=0.0, vy=0.0, wz=0.0)
+    mpc = mpc_wrapper_srbd.BatchedMPCControllerWrapper(config, n_env=1)
 
-    if counter % (sim_frequency / mpc_frequency) == 0 or counter == 0:
+    _reset_to_initial_state(model, data)
 
-        foot_op = np.array([env.feet_pos('world').FL, env.feet_pos('world').FR, env.feet_pos('world').RL, env.feet_pos('world').RR],order="F")
-        ref_base_lin_vel = env._ref_base_lin_vel_H
-        ref_base_ang_vel =  np.array([0., 0., env._ref_base_ang_yaw_dot])
+    foot = jnp.asarray(sim_utils.geom_positions(data, contact_ids))
+    x0 = _srbd_state(data.qpos, data.qvel)
+    command = jnp.asarray(command_handle.mpc_input(config.robot_height))
+    contact = jnp.asarray(sim_utils.estimate_contacts(data, contact_ids))
 
-        p = qpos[:3].copy()
-        quat = qpos[3:7].copy()
-        q = qpos[7:].copy()
-        dp = qvel[:3].copy()
-        omega = qvel[3:6].copy()
-        dq = qvel[6:].copy()
-        foot_op_vec = foot_op.flatten()
-        x0 = jnp.concatenate([p,quat, dp, omega])
+    mpc.run(x0[None, :], command[None, :], foot[None, :], contact[None, :])
+    tau_warm, _ = mpc.whole_body_run(
+        jnp.asarray(data.qpos)[None, :],
+        jnp.asarray(data.qvel)[None, :],
+    )
+    tau_warm.block_until_ready()
+    mpc.reset()
 
-        input =  jnp.array([ref_base_lin_vel[0],ref_base_lin_vel[1],ref_base_lin_vel[2],
-                           ref_base_ang_vel[0],ref_base_ang_vel[1],ref_base_ang_vel[2],
-                           config.robot_height])
-        x0_batch = jnp.tile(x0, (1, 1))
-        input_batch = jnp.tile(input, (1, 1))
-        foot_op_batch = jnp.tile(foot_op_vec, (1, 1))
-        contact_temp, _ = env.feet_contact_state()
-        
-        contact = np.array([contact_temp[robot_feet_geom_names[leg]] for leg in ['FL','FR','RL','RR']])
-        contact_batch = jnp.tile(contact, (1, 1))
-        mpc.run(x0_batch, input_batch, foot_op_batch,contact_batch)
-        grf_ = mpc.grf[0]
-    qpos_batch = jnp.tile(qpos, (1, 1))
-    qvel_batch = jnp.tile(qvel, (1,1))
-    total_tau = mpc.whole_body_run(qpos_batch, qvel_batch)
-    env.step(action=total_tau[0])
-    counter += 1
-    env.render()
-env.close()
+    period = int(sim_frequency / config.mpc_frequency)
+    print(f"Controller period: {period} steps at {sim_frequency} Hz simulation frequency.")
+    counter = 0
+
+    def step_controller():
+        nonlocal counter
+
+        qpos = data.qpos.copy()
+        qvel = data.qvel.copy()
+
+        if counter % period == 0:
+            foot = jnp.asarray(sim_utils.geom_positions(data, contact_ids))
+            command = jnp.asarray(command_handle.mpc_input(config.robot_height))
+            contact = jnp.asarray(sim_utils.estimate_contacts(data, contact_ids))
+            x0 = _srbd_state(qpos, qvel)
+
+            print(f"Contact: {contact}")
+            print(foot)
+            print(f"Command: {command}")
+
+            start = timer()
+            mpc.run(x0[None, :], command[None, :], foot[None, :], contact[None, :])
+            stop = timer()
+            print(f"MPC time: {1e3 * (stop - start):.2f} ms")
+
+        tau_cmd, _ = mpc.whole_body_run(
+            jnp.asarray(qpos)[None, :],
+            jnp.asarray(qvel)[None, :],
+        )
+        data.ctrl = np.asarray(tau_cmd[0])
+        mujoco.mj_step(model, data)
+        counter += 1
+
+    if headless:
+        for _ in range(steps):
+            step_controller()
+        return
+
+    with mujoco.viewer.launch_passive(
+        model,
+        data,
+        key_callback=command_handle.key_callback,
+    ) as viewer:
+        viewer.sync()
+        while viewer.is_running():
+            overlay_text = command_handle.consume_overlay_text()
+            tic = timer()
+            if overlay_text is not None:
+                viewer.set_texts((None, None, *overlay_text))
+            step_controller()
+            toc = timer()
+            if toc - tic < model.opt.timestep:
+                time.sleep(model.opt.timestep - (toc - tic))
+            viewer.sync()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--steps", type=int, default=500)
+    parser.add_argument("--scene", type=str, default="flat")
+    parser.add_argument("--headless", action="store_true")
+    args = parser.parse_args()
+    main(
+        headless=args.headless,
+        steps=args.steps,
+        scene=args.scene,
+    )

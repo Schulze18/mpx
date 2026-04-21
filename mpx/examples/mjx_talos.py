@@ -1,82 +1,123 @@
+import argparse
 import os
 import sys
+from timeit import default_timer as timer
+
 dir_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(os.path.abspath(os.path.join(dir_path, '..')))
+sys.path.append(os.path.abspath(os.path.join(dir_path, "..")))
+os.environ.setdefault("XLA_FLAGS", "--xla_gpu_enable_command_buffer=")
+
 import jax
-# jax.config.update('jax_platform_name', 'cpu')
 import jax.numpy as jnp
+import mujoco
+import mujoco.viewer
+import numpy as np
+
+import mpx.config.config_talos as config
+import mpx.utils.mpc_wrapper as mpc_wrapper
+import mpx.utils.sim as sim_utils
+
 jax.config.update("jax_compilation_cache_dir", "./jax_cache")
 jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
 jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
 
 
-import numpy as np
-import mujoco
-import mujoco.viewer
-import numpy as np
-from gym_quadruped.utils.mujoco.visual import render_sphere ,render_vector
-import mpx.utils.mpc_wrapper as mpc_wrapper
-import mpx.config.config_talos as config
+def _build_solve_fn(mpc):
+    @jax.jit
+    def solve_mpc(mpc_data, qpos, qvel, foot, command, contact):
+        x0 = (
+            mpc.initial_state
+            .at[mpc.qpos_slice].set(qpos)
+            .at[mpc.qvel_slice].set(qvel)
+            .at[mpc.foot_slice].set(foot)
+        )
+        return mpc.run(mpc_data, x0, command, contact)
 
-model = mujoco.MjModel.from_xml_path(dir_path+'/../data/pal_talos/talos_motor_rough.xml')
-data = mujoco.MjData(model)
-sim_frequency = 500.0
-model.opt.timestep = 1/sim_frequency
+    return solve_mpc
 
-contact_id = []
-for name in config.contact_frame:
-    contact_id.append(mujoco.mj_name2id(model,mujoco.mjtObj.mjOBJ_GEOM,name))
-mpc = mpc_wrapper.MPCControllerWrapper(config)
-data.qpos = jnp.concatenate([config.p0, config.quat0,config.q0])
 
-from timeit import default_timer as timer
+def main(steps=500):
+    model = mujoco.MjModel.from_xml_path(
+        dir_path + "/../data/pal_talos/talos_motor_rough.xml"
+    )
+    data = mujoco.MjData(model)
+    sim_frequency = 500.0
+    model.opt.timestep = 1 / sim_frequency
 
-ids = []
-tau = jnp.zeros(config.n_joints)
-with mujoco.viewer.launch_passive(model, data) as viewer:
+    mpc = mpc_wrapper.MPCWrapper(config, limited_memory=True)
+    command_handle = sim_utils.KeyboardVelocityCommand()
+    solve_mpc = _build_solve_fn(mpc)
+    reset_mpc = jax.jit(mpc.reset)
+
+    data.qpos = jnp.concatenate([config.p0, config.quat0, config.q0])
     mujoco.mj_step(model, data)
-    viewer.sync()
-    delay = int(0*sim_frequency)
-    print('Delay: ',delay)
-    mpc.robot_height = config.robot_height
-    mpc.reset(data.qpos.copy(),data.qvel.copy())
+
+    foot = mpc.foot_positions(data.qpos.copy())
+    mpc_data = reset_mpc(mpc.make_data(), data.qpos.copy(), data.qvel.copy(), foot)
+
+    # Warm up the jitted MPC call so the printed timings are steady-state.
+    warm_command = jnp.asarray(command_handle.mpc_input(config.robot_height))
+    warm_contact = jnp.zeros(config.n_contact)
+    mpc_data, tau = solve_mpc(
+        mpc_data,
+        data.qpos.copy(),
+        data.qvel.copy(),
+        foot,
+        warm_command,
+        warm_contact,
+    )
+    tau.block_until_ready()
+    mpc_data = reset_mpc(mpc_data, data.qpos.copy(), data.qvel.copy(), foot)
+
+    period = int(sim_frequency / config.mpc_frequency)
     counter = 0
-    while viewer.is_running():
-        
+    tau = jnp.zeros(config.n_joints)
+
+    def step_controller():
+        nonlocal counter, tau, mpc_data
+
         qpos = data.qpos.copy()
         qvel = data.qvel.copy()
-        if counter % (sim_frequency / config.mpc_frequency) == 0 or counter == 0:
-            
-            if counter != 0:
-                for i in range(delay):
-                    qpos = data.qpos.copy()
-                    qvel = data.qvel.copy()
-                    tau_fb = -3*(qvel[6:6+config.n_joints])
-                    data.ctrl = tau + tau_fb
-                    mujoco.mj_step(model, data)
-                    counter += 1
-            start = timer()
-            ref_base_lin_vel = jnp.array([0.3,0,0])
-            ref_base_ang_vel = jnp.array([0,0,0.0])
-            
-            # x0 = jnp.concatenate([qpos, qvel,jnp.zeros(3*config.n_contact)])
-            input = np.array([ref_base_lin_vel[0],ref_base_lin_vel[1],ref_base_lin_vel[2],
-                           ref_base_ang_vel[0],ref_base_ang_vel[1],ref_base_ang_vel[2],
-                           1.0])
-            
-            #set this to the current contact state to use the blind step adaptation
-            contact = np.zeros(config.n_contact)
-        
-            start = timer()
-            tau, q, dq  = mpc.run(qpos,qvel,input,contact)   
-            stop = timer()
-            
-            print(f"Time elapsed: {stop-start}")            
-        counter += 1        
-        data.ctrl = tau - 3*qvel[6:6+config.n_joints]
-        mujoco.mj_step(model, data)
-        viewer.sync()
-        
-    
-    
+        if counter % period == 0:
+            foot = mpc.foot_positions(qpos)
+            command = jnp.asarray(command_handle.mpc_input(config.robot_height))
+            contact = jnp.zeros(config.n_contact)
 
+            start = timer()
+            mpc_data, tau = solve_mpc(
+                mpc_data,
+                qpos,
+                qvel,
+                foot,
+                command,
+                contact,
+            )
+            tau.block_until_ready()
+            stop = timer()
+
+            tau = jnp.clip(tau, config.min_torque, config.max_torque)
+            print(f"MPC time: {1e3 * (stop - start):.2f} ms")
+
+        data.ctrl = np.asarray(tau - 3.0 * qvel[6 : 6 + config.n_joints])
+        mujoco.mj_step(model, data)
+        counter += 1
+
+    with mujoco.viewer.launch_passive(
+        model,
+        data,
+        key_callback=command_handle.key_callback,
+    ) as viewer:
+        viewer.sync()
+        while viewer.is_running():
+            overlay_text = command_handle.consume_overlay_text()
+            if overlay_text is not None:
+                viewer.set_texts((None, None, *overlay_text))
+            step_controller()
+            viewer.sync()
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--steps", type=int, default=500)
+    args = parser.parse_args()
+    main(steps=args.steps)
