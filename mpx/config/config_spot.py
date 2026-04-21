@@ -26,7 +26,7 @@ mpc_frequency = 50
 timer_t = jnp.array([0.5, 0.0, 0.0, 0.5])
 duty_factor = 0.7
 step_freq = 1.0
-step_height = 0.08
+step_height = 0.12
 initial_height = 0.46
 robot_height = 0.35
 
@@ -55,15 +55,15 @@ grf_as_state = True
 u_ref = jnp.zeros(m)
 
 # Cost weights.
-Qp = jnp.diag(jnp.array([0.0, 0.0, 1e4]))
-Qrot = jnp.diag(jnp.array([1000.0, 1000.0, 0.0])) * 1
-Qq = jnp.diag(jnp.ones(n_joints)) * 1e0
-Qdp = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e3
-Qomega = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e2
-Qdq = jnp.diag(jnp.ones(n_joints)) * 1e-1
-Qtau = jnp.diag(jnp.ones(n_joints)) * 1e-2
-Q_grf = jnp.diag(jnp.ones(3 * n_contact)) * 1e-3
-Qleg = jnp.diag(jnp.tile(jnp.array([1e4, 1e4, 1e5]), n_contact))
+# Qp = jnp.diag(jnp.array([0.0, 0.0, 1e4]))
+# Qrot = jnp.diag(jnp.array([1000.0, 1000.0, 0.0])) * 1
+# Qq = jnp.diag(jnp.ones(n_joints)) * 1e0
+# Qdp = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e3
+# Qomega = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e2
+# Qdq = jnp.diag(jnp.ones(n_joints)) * 1e-1
+# Qtau = jnp.diag(jnp.ones(n_joints)) * 1e-2
+# Q_grf = jnp.diag(jnp.ones(3 * n_contact)) * 1e-3
+# Qleg = jnp.diag(jnp.tile(jnp.array([1e4, 1e4, 1e5]), n_contact))
 
 # Qp    = jnp.diag(jnp.array([0, 0, 1e4]))  # Cost matrix for position
 # Qrot  = jnp.diag(jnp.array([1000, 1000, 0]))  # Cost matrix for rotation
@@ -76,6 +76,19 @@ Qleg = jnp.diag(jnp.tile(jnp.array([1e4, 1e4, 1e5]), n_contact))
 
 # # For the leg contact cost, repeat the unit cost for each contact point.
 # Qleg = jnp.diag(jnp.tile(jnp.array([1e4,1e4,1e5]),n_contact))
+
+# Cost matrices (diagonal matrices created using jnp.diag)
+Qp    = jnp.diag(jnp.array([0, 0, 1e4]))  # Cost matrix for position
+Qrot  = jnp.diag(jnp.array([1000, 1000, 0]))*2  # Cost matrix for rotation
+Qq    = jnp.diag(jnp.ones(n_joints)) * 1e-1 # Cost matrix for joint angles
+Qdp   = jnp.diag(jnp.array([1, 1, 1])) * 5e3  # Cost matrix for position derivatives
+Qomega= jnp.diag(jnp.array([1, 1, 1])) * 1e2  # Cost matrix for angular velocity
+Qdq   = jnp.diag(jnp.ones(n_joints)) * 1e-1  # Cost matrix for joint angle derivatives
+Qtau  = jnp.diag(jnp.ones(n_joints)) * 1e-1  # Cost matrix for torques
+Q_grf = jnp.diag(jnp.ones(3*n_contact)) * 1e-2  # Cost matrix for ground reaction forces
+
+# For the leg contact cost, repeat the unit cost for each contact point.
+Qleg = jnp.diag(jnp.tile(jnp.array([5e4,5e4,1e5]),n_contact))
 
 W = jax.scipy.linalg.block_diag(Qp, Qrot, Qq, Qdp, Qomega, Qdq, Qleg, Qtau, Q_grf)
 

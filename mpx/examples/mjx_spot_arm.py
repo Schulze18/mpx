@@ -96,6 +96,7 @@ def main(headless=False, steps=500, scene="flat"):
             contact = jnp.asarray(sim_utils.estimate_contacts(data, contact_ids))
             print(f"Contact: {contact}")
             print(foot)
+            print(f"Base position: {qpos[:3]}")
             print(f"Command: {command}")
             
             start = timer()
