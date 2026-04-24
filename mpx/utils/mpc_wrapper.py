@@ -15,6 +15,7 @@ class MPCData(PyTreeNode):
     """Carry state for the pure functional MPC API."""
 
     dt: float
+    time: jnp.ndarray
     duty_factor: float
     step_freq: float
     step_height: float
@@ -24,6 +25,7 @@ class MPCData(PyTreeNode):
     U0: jnp.ndarray
     V0: jnp.ndarray
     W: jnp.ndarray
+    extra_qref_data: object = None
 
 
 mpx_data = MPCData
@@ -165,19 +167,27 @@ class MPCWrapper:
 
         reference_generator = getattr(config, "reference_generator", mpc_utils.reference_generator)
         clearance_speed = getattr(config, "clearance_speed", getattr(config, "clearence_speed", 0.2))
-        self._ref_gen = jax.jit(
-            partial(
-                reference_generator,
-                config.use_terrain_estimation,
-                config.N,
-                config.dt,
-                config.n_joints,
-                config.n_contact,
-                robot_mass,
-                foot0=config.p_legs0,
-                q0=config.q0,
-                clearence_speed=clearance_speed,
-            )
+
+        ref_gen_kwargs = {
+            "foot0": config.p_legs0,
+            "q0": config.q0,
+            "clearence_speed": clearance_speed,
+        }
+        if hasattr(config, "extra_qref_fn"):
+            ref_gen_kwargs["extra_qref_fn"] = config.extra_qref_fn
+
+        # `reference_generator` is already jitted in mpc_utils. Keep a single
+        # binding layer here to avoid argument-position ambiguities when an
+        # extra q-ref callback is provided from config.
+        self._ref_gen = partial(
+            reference_generator,
+            config.use_terrain_estimation,
+            config.N,
+            config.dt,
+            config.n_joints,
+            config.n_contact,
+            robot_mass,
+            **ref_gen_kwargs,
         )
         self._timer_run = jax.jit(mpc_utils.timer_run)
         self._update_warm_start = partial(
@@ -193,6 +203,7 @@ class MPCWrapper:
 
         return MPCData(
             dt=self.config.dt,
+            time=jnp.asarray(0.0, dtype=jnp.float32),
             duty_factor=self.config.duty_factor,
             step_freq=self.config.step_freq,
             step_height=self.config.step_height,
@@ -202,6 +213,7 @@ class MPCWrapper:
             U0=self.initial_U0,
             V0=self.initial_V0,
             W=self.config.W,
+            extra_qref_data=getattr(self.config, "extra_qref_data", None),
         )
 
     def control_output(self, x0, X, U, reference, parameter):
@@ -226,6 +238,8 @@ class MPCWrapper:
             input=input,
             liftoff=data.liftoff,
             contact=contact,
+            current_time=data.time,
+            extra_qref_data=data.extra_qref_data,
         )
 
         # Reference generation and solver execution stay on the pure JAX path.
@@ -255,7 +269,9 @@ class MPCWrapper:
             V,
         )
 
+        new_time = data.time + jnp.asarray(1 / self.mpc_frequency, dtype=data.time.dtype)
         data = data.replace(
+            time=new_time,
             X0=X0,
             U0=U0,
             V0=V0,
@@ -286,6 +302,7 @@ class MPCWrapper:
             U0=self.initial_U0,
             X0=jnp.tile(initial_state, (self.config.N + 1, 1)),
             V0=self.initial_V0,
+            time=jnp.asarray(0.0, dtype=jnp.float32),
             contact_time=self.config.timer_t,
             liftoff=jnp.ravel(foot),
         )

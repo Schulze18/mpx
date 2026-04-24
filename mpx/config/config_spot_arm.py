@@ -112,3 +112,29 @@ def dynamics(model, mjx_model, contact_id, body_id):
 max_torque = 500
 min_torque = -500
 solver_mode = "primal_dual"  # Solver mode for the optimization problem
+
+extra_qref_data = {
+    "amp": jnp.array([2.0, 0.5, 0.4, 0.6, 0.7, 0.8, 0.5]),
+    "freq": jnp.array([0.2, 1.0, 1.2, 0.8, 0.9, 1.0, 0.5]),
+    "joint_index": jnp.arange(7, dtype=jnp.int32),
+}
+
+def extra_qref_fn(q_ref, current_time, data):
+    if data is None:
+        return q_ref
+
+    arm_amp_ref = data["amp"]
+    arm_freq_ref = data["freq"]
+    arm_joint_index = data["joint_index"]
+
+    def arm_fn(t, carry):
+        q_ref = carry
+        #
+        time_n = t * dt + current_time
+        arm_pos = arm_amp_ref * jnp.sin(2 * jnp.pi * arm_freq_ref * time_n) + q0[arm_joint_index]
+
+        q_ref = q_ref.at[t,arm_joint_index].set(arm_pos)
+        return (q_ref)
+    init_carry = q_ref
+    q_ref = jax.lax.fori_loop(0, N+1, arm_fn, init_carry)
+    return q_ref

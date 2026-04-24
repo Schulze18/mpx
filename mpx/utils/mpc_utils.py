@@ -35,8 +35,8 @@ def terrain_orientation(liftoff_pos,Ryaw):
 
     return jnp.roll(quat,1)
 
-@partial(jax.jit, static_argnums=(0,1,2,3,4,5))
-def reference_generator(use_terrain_estimator,N,dt,n_joints,n_contact,mass,foot0,q0,t_timer, x, foot, input, duty_factor, step_freq,step_height,liftoff,contact,clearence_speed):
+@partial(jax.jit, static_argnums=(0,1,2,3,4,5), static_argnames=("extra_qref_fn",))
+def reference_generator(use_terrain_estimator,N,dt,n_joints,n_contact,mass,foot0,q0,t_timer, x, foot, input, duty_factor, step_freq,step_height,liftoff,contact,clearence_speed, current_time, extra_qref_fn=None, extra_qref_data=None):
     p = x[:3]
     quat = x[3:7]
     # q = x[7:7+n_joints]
@@ -140,6 +140,25 @@ def reference_generator(use_terrain_estimator,N,dt,n_joints,n_contact,mass,foot0
     liftoff = liftoff.at[::3].set(liftoff_x)
     liftoff = liftoff.at[1::3].set(liftoff_y)
     liftoff = liftoff.at[2::3].set(liftoff_z)
+
+    # ## Reference for the arm
+    # nq_arm = 7
+    # arm_amp_ref = jnp.array([2.0, 0.5, 0.4, 0.6, 0.7, 0.8, 0.5])
+    # arm_freq_ref = jnp.array([0.2, 1.0, 1.2, 0.8, 0.9, 1.0, 0.5])
+    # larm_index = 0
+    # def arm_fn(t, carry):
+    #     q_ref = carry
+    #     #
+    #     time_n = t * dt + current_time
+    #     arm_pos = arm_amp_ref * jnp.sin(2 * jnp.pi * arm_freq_ref * time_n) + q0[larm_index:larm_index+nq_arm]
+
+    #     q_ref = q_ref.at[t,larm_index:larm_index+nq_arm].set(arm_pos)
+    #     return (q_ref)
+    # init_carry = q_ref
+    # q_ref = jax.lax.fori_loop(0, N+1, arm_fn, init_carry)
+
+    if extra_qref_fn is not None:
+        q_ref = extra_qref_fn(q_ref, current_time, extra_qref_data)
 
     return jnp.concatenate([p_ref, quat_ref, q_ref, dp_ref, omega_ref, foot_ref, contact_sequence,grf_ref], axis=1),jnp.concatenate([contact_sequence], axis=1), liftoff
 
