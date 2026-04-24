@@ -86,16 +86,6 @@ Q_grf = jnp.diag(jnp.ones(3*n_contact)) * 1e-3 # Cost matrix for ground reaction
 # For the leg contact cost, repeat the unit cost for each contact point.
 Qleg = jnp.diag(jnp.tile(jnp.array([1e4,1e4,1e5]),n_contact))
 
-# Qp = jnp.diag(jnp.array([0.0, 0.0, 1e4]))
-# Qrot = jnp.diag(jnp.array([1000.0, 1000.0, 0.0]))
-# # Qq = jnp.diag(jnp.ones(n_joints)) * 1e0
-# Qq = jnp.diag(jnp.concatenate([jnp.ones(7) * 1e3, jnp.ones(12) * 1e0]))
-# Qdp = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e3
-# Qomega = jnp.diag(jnp.array([1.0, 1.0, 1.0])) * 1e2
-# Qdq = jnp.diag(jnp.ones(n_joints)) * 1e-1
-# Qtau = jnp.diag(jnp.ones(n_joints)) * 1e-2
-# Q_grf = jnp.diag(jnp.ones(3 * n_contact)) * 1e-3
-# Qleg = jnp.diag(jnp.tile(jnp.array([1e4, 1e4, 1e5]), n_contact))
 W = jax.scipy.linalg.block_diag(Qp, Qrot, Qq, Qdp, Qomega, Qdq, Qleg, Qtau, Q_grf)
 
 use_terrain_estimation = False
