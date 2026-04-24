@@ -24,13 +24,13 @@ mpc_frequency = 50
 
 # Gait parameters.
 timer_t = jnp.array([0.5, 0.0, 0.0, 0.5])
-duty_factor = 0.7
-step_freq = 1.0
+duty_factor = 0.65
+step_freq = 1.35
 step_height = 0.12
 # initial_height = 0.40
 # robot_height = 0.40
 initial_height = 0.46
-robot_height = 0.35
+robot_height = 0.46
 
 # Initial base state and nominal joint posture.
 p0 = jnp.array([0.0, 0.0, initial_height])
@@ -75,16 +75,16 @@ u_ref = jnp.zeros(m)
 
 # Values for go2
 Qp    = jnp.diag(jnp.array([0, 0, 1e4]))  # Cost matrix for position
-Qrot  = jnp.diag(jnp.array([1000, 1000, 0])) * 2  # Cost matrix for rotation
-Qq    = jnp.diag(jnp.concatenate([jnp.ones(7) * 1e3, jnp.ones(12) * 1e-1])) # Cost matrix for joint angles
+Qrot  = jnp.diag(jnp.array([1000, 1000, 0]))  # Cost matrix for rotation
+Qq    = jnp.diag(jnp.concatenate([jnp.ones(7) * 5e2, jnp.ones(12) * 1e-1])) # Cost matrix for joint angles
 Qdp   = jnp.diag(jnp.array([1, 1, 1])) * 5e3  # Cost matrix for position derivatives
 Qomega= jnp.diag(jnp.array([1, 1, 1])) * 1e2  # Cost matrix for angular velocity
 Qdq   = jnp.diag(jnp.ones(n_joints)) * 1e-1  # Cost matrix for joint angle derivatives
-Qtau  = jnp.diag(jnp.concatenate([jnp.ones(7) * 1e-3, jnp.ones(12) * 1e-1]))  # Cost matrix for torques
-Q_grf = jnp.diag(jnp.ones(3*n_contact)) * 1e-2  # Cost matrix for ground reaction forces
+Qtau  = jnp.diag(jnp.ones(n_joints)) * 1e-2  # Cost matrix for torques
+Q_grf = jnp.diag(jnp.ones(3*n_contact)) * 1e-3 # Cost matrix for ground reaction forces
 
 # For the leg contact cost, repeat the unit cost for each contact point.
-Qleg = jnp.diag(jnp.tile(jnp.array([5e4,5e4,1e5]),n_contact))
+Qleg = jnp.diag(jnp.tile(jnp.array([1e4,1e4,1e5]),n_contact))
 
 # Qp = jnp.diag(jnp.array([0.0, 0.0, 1e4]))
 # Qrot = jnp.diag(jnp.array([1000.0, 1000.0, 0.0]))
@@ -104,7 +104,7 @@ initial_state = jnp.concatenate(
     [p0, quat0, q0, jnp.zeros(6 + n_joints), p_legs0, jnp.zeros(_state_extra)]
 )
 
-cost = partial(mpc_objectives.quadruped_arm_wb_obj, True, n_joints, n_contact, N)
+cost = partial(mpc_objectives.quadruped_wb_obj, True, n_joints, n_contact, N)
 hessian_approx = None
 
 def dynamics(model, mjx_model, contact_id, body_id):
