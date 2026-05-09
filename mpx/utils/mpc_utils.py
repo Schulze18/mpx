@@ -162,6 +162,134 @@ def reference_generator(use_terrain_estimator,N,dt,n_joints,n_contact,mass,foot0
 
     return jnp.concatenate([p_ref, quat_ref, q_ref, dp_ref, omega_ref, foot_ref, contact_sequence,grf_ref], axis=1),jnp.concatenate([contact_sequence], axis=1), liftoff
 
+@partial(jax.jit, static_argnums=(0,1,2,3,4,5), static_argnames=("extra_qref_fn",))
+def reference_generator_orientation(use_terrain_estimator,N,dt,n_joints,n_contact,mass,foot0,q0,t_timer, x, foot, input, duty_factor, step_freq,step_height,liftoff,contact,clearence_speed, current_time, extra_qref_fn=None, extra_qref_data=None):
+    p = x[:3]
+    quat = x[3:7]
+    # q = x[7:7+n_joints]
+    dp = x[7+n_joints:10+n_joints]
+    # omega = x[10+n_joints:13+n_joints]
+    # dq = x[13+n_joints:13+2*n_joints]
+    yaw = jnp.arctan2(2*(quat[0]*quat[3] + quat[1]*quat[2]), 1 - 2*(quat[2]*quat[2] + quat[3]*quat[3]))
+    Ryaw = jnp.array([[jnp.cos(yaw), -jnp.sin(yaw), 0],[jnp.sin(yaw), jnp.cos(yaw), 0],[0, 0, 1]])
+    proprio_height = input[6] + jnp.sum(liftoff[2::3])/n_contact
+    p = jnp.array([p[0], p[1], proprio_height])
+    if use_terrain_estimator:
+        quat_ref = jnp.tile(terrain_orientation(liftoff,Ryaw), (N+1, 1))
+    else:
+        quat_ref = jnp.tile(input[-4:], (N+1, 1))
+    q_ref = jnp.tile(q0, (N+1, 1))
+    contact_sequence = jnp.zeros(((N+1), n_contact))
+    pitch = jnp.arcsin(2 * (quat_ref[0,0] * quat_ref[0,2] - quat_ref[0,3] * quat_ref[0,1]))
+    Rpitch = jnp.array([[jnp.cos(pitch), 0, jnp.sin(pitch)], [0, 1, 0], [-jnp.sin(pitch), 0, jnp.cos(pitch)]])
+    
+    ref_lin_vel = Ryaw@Rpitch@input[:3]
+    ref_ang_vel = input[3:6]
+    p_ref_x = jnp.arange(N+1) * dt * ref_lin_vel[0] + p[0]
+    p_ref_y = jnp.arange(N+1) * dt * ref_lin_vel[1] + p[1]
+    p_ref_z = jnp.ones(N+1) * proprio_height
+    p_ref = jnp.stack([p_ref_x, p_ref_y, p_ref_z], axis=1)
+    dp_ref = jnp.tile(ref_lin_vel, (N+1, 1))
+    omega_ref = jnp.tile(ref_ang_vel, (N+1, 1))
+    foot_ref = jnp.tile(foot, (N+1, 1))
+    foot0_projected = jnp.tile(p, n_contact) + foot0 @ jax.scipy.linalg.block_diag(*([Ryaw] * n_contact)).T
+    grf_ref = jnp.zeros((N+1, 3*n_contact))
+
+    #Estimate Early contact
+    des_contact, current_timer = timer_run(duty_factor, step_freq, t_timer, dt)
+    early_contact = jnp.where(jnp.logical_and(jnp.logical_and(des_contact==0,contact==1),current_timer > 0.5 + 0.5*duty_factor),1,0)    
+
+    def foot_fn(t,carry):
+
+        timer_seq, contact_sequence,new_foot,liftoff_x,liftoff_y,liftoff_z,grf_new = carry
+
+        new_foot_x = new_foot[t-1,::3]
+        new_foot_y = new_foot[t-1,1::3]
+        new_foot_z = new_foot[t-1,2::3]
+
+        new_contact_sequence, new_t = timer_run(duty_factor, step_freq, timer_seq[t-1,:], dt)
+
+        contact_sequence = contact_sequence.at[t,:].set(new_contact_sequence)
+        timer_seq = timer_seq.at[t,:].set(new_t)
+
+        liftoff_x = jnp.where(jnp.logical_and(jnp.logical_not(contact_sequence[t,:]),contact_sequence[t-1,:]),new_foot_x,liftoff_x)
+        liftoff_y = jnp.where(jnp.logical_and(jnp.logical_not(contact_sequence[t,:]),contact_sequence[t-1,:]),new_foot_y,liftoff_y)
+        liftoff_z = jnp.where(jnp.logical_and(jnp.logical_not(contact_sequence[t,:]),contact_sequence[t-1,:]),new_foot_z,liftoff_z)
+
+        def calc_foothold(direction):
+            f1 = 0.5*ref_lin_vel[direction]*duty_factor/step_freq
+            f2 = jnp.sqrt(input[6]/9.81)*(dp[direction]-ref_lin_vel[direction])
+            f = f1 + f2 + foot0_projected[direction::3]
+            return f
+
+        foothold_x = calc_foothold(0)
+        foothold_y = calc_foothold(1)
+
+        def cubic_splineXY(current_foot, foothold,initial_velocity,val):
+            a0 = current_foot
+            a1 = initial_velocity
+            a2 = 3*(foothold - current_foot) - 2*initial_velocity
+            a3 = initial_velocity - 2*(foothold - current_foot)
+            return a0 + a1*val + a2*val**2 + a3*val**3
+
+        def cubic_splineZ(current_foot, foothold, step_height,val):
+            
+            initial_speed = 0.7
+
+            a = 16*step_height - 8*foothold - 8*current_foot - 2*initial_speed
+            b = 5*initial_speed + 14*foothold + 18*current_foot - 32*step_height
+            c = 16*step_height - 5*foothold - 11*current_foot - 4*initial_speed
+            d = initial_speed
+            e = current_foot
+            return a*val**4 + b*val**3 + c*val**2 + d*val + e
+        
+        initial_speed = - ref_lin_vel / (jnp.linalg.norm(ref_lin_vel) + 1e-6) * clearence_speed
+
+        new_foot_x = jnp.where(jnp.logical_or(new_contact_sequence>0,early_contact==1), new_foot[t-1,::3], cubic_splineXY(liftoff_x, foothold_x,initial_speed[0],(new_t-duty_factor)/(1-duty_factor)))
+        new_foot_y = jnp.where(jnp.logical_or(new_contact_sequence>0,early_contact==1), new_foot[t-1,1::3], cubic_splineXY(liftoff_y, foothold_y,initial_speed[1],(new_t-duty_factor)/(1-duty_factor)))
+        new_foot_z = jnp.where(jnp.logical_or(new_contact_sequence>0,early_contact==1), new_foot[t-1,2::3], cubic_splineZ(liftoff_z,liftoff_z,liftoff_z + step_height,(new_t-duty_factor)/(1-duty_factor)))
+
+        new_foot = new_foot.at[t,::3].set(new_foot_x)
+        new_foot = new_foot.at[t,1::3].set(new_foot_y)
+        new_foot = new_foot.at[t,2::3].set(new_foot_z)
+
+        grf_new = grf_new.at[t,2::3].set((new_contact_sequence*mass*9.81/(jnp.sum(new_contact_sequence)+1e-5)))
+
+        return (timer_seq, contact_sequence,new_foot,liftoff_x,liftoff_y,liftoff_z,grf_new)
+
+    liftoff_x = liftoff[::3]
+    liftoff_y = liftoff[1::3]
+    liftoff_z = liftoff[2::3]
+    timer_sequence_in = jnp.tile(t_timer, (N+1, 1))
+    init_carry = (timer_sequence_in, contact_sequence,foot_ref,liftoff_x,liftoff_y,liftoff_z,grf_ref)
+    timer_sequence, contact_sequence,foot_ref, liftoff_x,liftoff_y,liftoff_z,grf_ref = jax.lax.fori_loop(0,N+1,foot_fn, init_carry)
+
+    liftoff = liftoff.at[::3].set(liftoff_x)
+    liftoff = liftoff.at[1::3].set(liftoff_y)
+    liftoff = liftoff.at[2::3].set(liftoff_z)
+
+    # ## Reference for the arm
+    # nq_arm = 7
+    # arm_amp_ref = jnp.array([2.0, 0.5, 0.4, 0.6, 0.7, 0.8, 0.5])
+    # arm_freq_ref = jnp.array([0.2, 1.0, 1.2, 0.8, 0.9, 1.0, 0.5])
+    # larm_index = 0
+    # def arm_fn(t, carry):
+    #     q_ref = carry
+    #     #
+    #     time_n = t * dt + current_time
+    #     arm_pos = arm_amp_ref * jnp.sin(2 * jnp.pi * arm_freq_ref * time_n) + q0[larm_index:larm_index+nq_arm]
+
+    #     q_ref = q_ref.at[t,larm_index:larm_index+nq_arm].set(arm_pos)
+    #     return (q_ref)
+    # init_carry = q_ref
+    # q_ref = jax.lax.fori_loop(0, N+1, arm_fn, init_carry)
+
+    if extra_qref_fn is not None:
+        q_ref = extra_qref_fn(q_ref, current_time, extra_qref_data)
+
+    return jnp.concatenate([p_ref, quat_ref, q_ref, dp_ref, omega_ref, foot_ref, contact_sequence,grf_ref], axis=1),jnp.concatenate([contact_sequence], axis=1), liftoff
+
+
 @partial(jax.jit, static_argnums=(0,1,2,3))
 def reference_generator_srbd(use_terrain_estimator,N,dt,n_contact,mass,foot0,t_timer, x, foot, input, duty_factor, step_freq,step_height,liftoff,contact,clearence_speed):
     p = x[:3]

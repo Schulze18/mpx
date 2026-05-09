@@ -116,3 +116,6 @@ def dynamics(model, mjx_model, contact_id, body_id):
 max_torque = 500
 min_torque = -500
 solver_mode = "primal_dual"  # Solver mode for the optimization problem
+
+import mpx.utils.mpc_utils as mpc_utils
+reference_generator = mpc_utils.reference_generator_orientation

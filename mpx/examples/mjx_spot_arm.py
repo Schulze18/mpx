@@ -19,6 +19,7 @@ import numpy as np
 import mpx.config.config_spot_arm as config
 import mpx.utils.mpc_wrapper as mpc_wrapper
 import mpx.utils.sim as sim_utils
+import mpx.utils.rotation as rotation_utils
 
 jax.config.update("jax_compilation_cache_dir", "./jax_cache")
 jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
@@ -37,6 +38,11 @@ def _build_solve_fn(mpc):
         return mpc.run(mpc_data, x0, command, contact)
 
     return solve_mpc
+
+
+def extend_comand(command, quat_ref):
+    return jnp.concatenate([command, quat_ref])
+
 
 x_pred = []
 x_true = []
@@ -82,6 +88,8 @@ def main(headless=False, steps=500, scene="flat"):
     counter = 0
     tau = jnp.zeros(config.n_joints)
     q_ref = config.q0.copy()
+    euler_ref_traj = []
+    euler_traj = []
 
     def step_controller():
         nonlocal counter, tau, q_ref, mpc_data
@@ -93,11 +101,19 @@ def main(headless=False, steps=500, scene="flat"):
             foot = jnp.asarray(sim_utils.geom_positions(data, contact_ids))
            
             command = jnp.asarray(command_handle.mpc_input(config.robot_height))
+            roll_ref = 0.1 * jnp.sin(2 * jnp.pi * 0.2 *counter * model.opt.timestep)
+            pitch_ref = 0.25 * jnp.sin(2 * jnp.pi * 0.5 * counter * model.opt.timestep)
+            euler_ref = jnp.array([roll_ref, pitch_ref, 0.0])
+            quat_ref = rotation_utils.rpy_to_quat(euler_ref)
+            command = extend_comand(command, quat_ref)
             contact = jnp.asarray(sim_utils.estimate_contacts(data, contact_ids))
             print(f"Contact: {contact}")
             print(foot)
             print(f"Base position: {qpos[:3]}")
             print(f"Command: {command}")
+
+            euler_ref_traj.append(euler_ref)
+            euler_traj.append(rotation_utils.quaternion_to_rpy(qpos[3:7]))
             
             start = timer()
             mpc_data, tau = solve_mpc(
@@ -183,6 +199,32 @@ def main(headless=False, steps=500, scene="flat"):
 
 
             viewer.sync()
+
+        euler_ref_traj_np = np.array(euler_ref_traj)
+        euler_traj_np = np.array(euler_traj)
+
+        try:
+            import matplotlib.pyplot as plt
+        except ModuleNotFoundError:
+            print("matplotlib is not installed; skipping orientation plots.")
+            return
+
+        time_array = np.arange(euler_ref_traj_np.shape[0]) * (period * model.opt.timestep)
+        plt.figure(figsize=(12, 8))
+        plt.subplot(3, 1, 1)
+        plt.plot(time_array, euler_ref_traj_np[:, 0], label="Reference Roll")
+        plt.plot(time_array, euler_traj_np[:, 0], label="Actual Roll")
+        plt.legend()
+        plt.subplot(3, 1, 2)
+        plt.plot(time_array, euler_ref_traj_np[:, 1], label="Reference Pitch")
+        plt.plot(time_array, euler_traj_np[:, 1], label="Actual Pitch")
+        plt.legend()
+        plt.subplot(3, 1, 3)
+        plt.plot(time_array, euler_ref_traj_np[:, 2], label="Reference Yaw")
+        plt.plot(time_array, euler_traj_np[:, 2], label="Actual Yaw")
+        plt.legend()
+        plt.xlabel("Time (s)")
+        plt.show()
 
 
 

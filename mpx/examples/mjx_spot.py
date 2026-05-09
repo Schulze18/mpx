@@ -17,6 +17,7 @@ import numpy as np
 import mpx.config.config_spot as config
 import mpx.utils.mpc_wrapper as mpc_wrapper
 import mpx.utils.sim as sim_utils
+import mpx.utils.rotation as rotation_utils
 
 jax.config.update("jax_compilation_cache_dir", "./jax_cache")
 jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
@@ -36,6 +37,10 @@ def _build_solve_fn(mpc):
 
     return solve_mpc
 
+
+def extend_comand(command, quat_ref):
+    # Extend the command with the reference orientation for the base.
+    return jnp.concatenate([command, quat_ref])
 
 def main(headless=False, steps=500, scene="flat"):
     model = mujoco.MjModel.from_xml_path(
@@ -58,6 +63,9 @@ def main(headless=False, steps=500, scene="flat"):
     mpc_data = reset_mpc(mpc.make_data(), data.qpos.copy(), data.qvel.copy(), foot)
 
     warm_command = jnp.asarray(command_handle.mpc_input(config.robot_height))
+    if config.reference_generator is not None:
+        quat_ref = jnp.array([1.0, 0.0, 0.0, 0.0])  # Identity quaternion as reference orientation
+        warm_command = extend_comand(warm_command, quat_ref)
     warm_contact = jnp.asarray(sim_utils.estimate_contacts(data, contact_ids))
     mpc_data, tau = solve_mpc(
         mpc_data,
@@ -75,6 +83,8 @@ def main(headless=False, steps=500, scene="flat"):
     counter = 0
     tau = jnp.zeros(config.n_joints)
     q_ref = config.q0.copy()
+    euler_ref_traj = []
+    euler_traj = []
 
     def step_controller():
         nonlocal counter, tau, q_ref, mpc_data
@@ -86,6 +96,17 @@ def main(headless=False, steps=500, scene="flat"):
             foot = jnp.asarray(sim_utils.geom_positions(data, contact_ids))
            
             command = jnp.asarray(command_handle.mpc_input(config.robot_height))
+            # quat_ref = jnp.array([1.0, 0.0, 0.0, 0.0])  # Identity quaternion as reference orientation
+            roll_ref = 0.1 * jnp.sin(2 * jnp.pi * 0.2 *counter * model.opt.timestep)
+            pitch_ref = 0.2 * jnp.sin(2 * jnp.pi * 0.5 *counter * model.opt.timestep)  # Oscillating pitch reference
+            euler_ref = jnp.array([roll_ref, pitch_ref, 0.0])  # Roll and pitch oscillation, no yaw
+            quat_ref = rotation_utils.rpy_to_quat(euler_ref)  # No rotation as reference
+            command = extend_comand(command, quat_ref)
+
+            euler_ref_traj.append(euler_ref)
+            euler_traj.append(rotation_utils.quaternion_to_rpy(qpos[3:7]))
+
+            print(f"Command: {command[6:10]}")
             contact = jnp.asarray(sim_utils.estimate_contacts(data, contact_ids))
             print(f"Contact: {contact}")
             print(foot)
@@ -172,6 +193,28 @@ def main(headless=False, steps=500, scene="flat"):
 
             viewer.sync()
 
+        euler_ref_traj_np = np.array(euler_ref_traj)
+        euler_traj_np = np.array(euler_traj)
+        
+
+        # plot the reference and actual euler angles over time
+        import matplotlib.pyplot as plt
+        time_array = np.arange(euler_ref_traj_np.shape[0]) * (period * model.opt.timestep)
+        plt.figure(figsize=(12, 8))
+        plt.subplot(3, 1, 1)
+        plt.plot(time_array, euler_ref_traj_np[:, 0], label="Reference Roll")
+        plt.plot(time_array, euler_traj_np[:, 0], label="Actual Roll")
+        plt.legend()
+        plt.subplot(3, 1, 2)
+        plt.plot(time_array, euler_ref_traj_np[:, 1], label="Reference Pitch")
+        plt.plot(time_array, euler_traj_np[:, 1], label="Actual Pitch")
+        plt.legend()
+        plt.subplot(3, 1, 3)
+        plt.plot(time_array, euler_ref_traj_np[:, 2], label="Reference Yaw")
+        plt.plot(time_array, euler_traj_np[:, 2], label="Actual Yaw")
+        plt.legend()
+        plt.xlabel("Time (s)")
+        plt.show()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

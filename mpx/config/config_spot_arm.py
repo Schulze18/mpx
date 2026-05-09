@@ -138,3 +138,7 @@ def extra_qref_fn(q_ref, current_time, data):
     init_carry = q_ref
     q_ref = jax.lax.fori_loop(0, N+1, arm_fn, init_carry)
     return q_ref
+
+
+import mpx.utils.mpc_utils as mpc_utils
+reference_generator = mpc_utils.reference_generator_orientation

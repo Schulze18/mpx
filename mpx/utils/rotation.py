@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 import jax
+from jax.scipy.spatial.transform import Rotation
 
 def quaternion_product(q1, q2):
     w1 = q1[0]
@@ -64,6 +65,15 @@ def quaternion_to_rpy(q):
     yaw = jnp.arctan2(siny_cosp, cosy_cosp)
 
     return jnp.array([roll, pitch, yaw])
+
+def rpy_to_quat(euler_angles):
+    def quat_xyz_to_wxyz(quat):
+        return jnp.concatenate([quat[..., 3:], quat[..., :3]], axis=-1)
+    """
+    Rotation of the base in euler zyx angles.
+    """
+    quat = Rotation.from_euler("xyz", euler_angles).as_quat()
+    return quat_xyz_to_wxyz(quat)
 
 def rotation_matrix_to_quaternion(R):
     """
