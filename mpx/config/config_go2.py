@@ -6,7 +6,7 @@ import os
 from functools import partial
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
-model_path = os.path.abspath(os.path.join(dir_path, '..')) + '/data/go2/go2_mjx.xml'  # Path to the MuJoCo model XML file
+model_path = os.path.abspath(os.path.join(dir_path, '..')) + '/data/go2/scene_mjx.xml'  # Path to the MuJoCo model XML file
 # Contact frame names and body names for feet (or calves)
 contact_frame = ['FL', 'FR', 'RL', 'RR']
 body_name = ['FL_calf', 'FR_calf', 'RL_calf', 'RR_calf']

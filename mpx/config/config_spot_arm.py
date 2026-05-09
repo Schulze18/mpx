@@ -35,7 +35,7 @@ robot_height = 0.46
 # Initial base state and nominal joint posture.
 p0 = jnp.array([0.0, 0.0, initial_height])
 quat0 = jnp.array([1.0, 0.0, 0.0, 0.0])
-q0 = jnp.array([0, -2.14, 2.06, 0, 0, 0, 0, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8])
+q0 = jnp.array([0, -2.14, 2.06, 0, 0, 0, 0, 0.1, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8])
 q0_init = q0
 
 # Nominal foot positions in the body frame at the home posture.
