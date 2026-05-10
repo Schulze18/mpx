@@ -63,7 +63,7 @@ def main(headless=False, steps=500, scene="flat"):
     mpc_data = reset_mpc(mpc.make_data(), data.qpos.copy(), data.qvel.copy(), foot)
 
     warm_command = jnp.asarray(command_handle.mpc_input(config.robot_height))
-    if config.reference_generator is not None:
+    if hasattr(config, "reference_generator"):
         quat_ref = jnp.array([1.0, 0.0, 0.0, 0.0])  # Identity quaternion as reference orientation
         warm_command = extend_comand(warm_command, quat_ref)
     warm_contact = jnp.asarray(sim_utils.estimate_contacts(data, contact_ids))
@@ -96,15 +96,16 @@ def main(headless=False, steps=500, scene="flat"):
             foot = jnp.asarray(sim_utils.geom_positions(data, contact_ids))
            
             command = jnp.asarray(command_handle.mpc_input(config.robot_height))
-            # quat_ref = jnp.array([1.0, 0.0, 0.0, 0.0])  # Identity quaternion as reference orientation
-            roll_ref = 0.1 * jnp.sin(2 * jnp.pi * 0.2 *counter * model.opt.timestep)
-            pitch_ref = 0.2 * jnp.sin(2 * jnp.pi * 0.5 *counter * model.opt.timestep)  # Oscillating pitch reference
-            euler_ref = jnp.array([roll_ref, pitch_ref, 0.0])  # Roll and pitch oscillation, no yaw
-            quat_ref = rotation_utils.rpy_to_quat(euler_ref)  # No rotation as reference
-            command = extend_comand(command, quat_ref)
+            if hasattr(config, "reference_generator"):
+                # quat_ref = jnp.array([1.0, 0.0, 0.0, 0.0])  # Identity quaternion as reference orientation
+                roll_ref = 0.3 * jnp.sin(2 * jnp.pi * 1.0 *counter * model.opt.timestep)
+                pitch_ref = 0.8 * jnp.sin(2 * jnp.pi * 1.0 *counter * model.opt.timestep)  # Oscillating pitch reference
+                euler_ref = jnp.array([roll_ref, pitch_ref, 0.0])  # Roll and pitch oscillation, no yaw
+                quat_ref = rotation_utils.rpy_to_quat(euler_ref)  # No rotation as reference
+                command = extend_comand(command, quat_ref)
 
-            euler_ref_traj.append(euler_ref)
-            euler_traj.append(rotation_utils.quaternion_to_rpy(qpos[3:7]))
+                euler_ref_traj.append(euler_ref)
+                euler_traj.append(rotation_utils.quaternion_to_rpy(qpos[3:7]))
 
             print(f"Command: {command[6:10]}")
             contact = jnp.asarray(sim_utils.estimate_contacts(data, contact_ids))

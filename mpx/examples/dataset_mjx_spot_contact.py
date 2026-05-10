@@ -13,6 +13,7 @@ import numpy as np
 import mpx.config.config_spot as config
 import mpx.utils.mpc_wrapper as mpc_wrapper
 import mpx.utils.sim as sim_utils
+import mpx.utils.rotation as rotation_utils
 
 import pickle
 
@@ -275,7 +276,7 @@ def add_sim_data_to_dataset(dataset, time, sim_mj_data, sim_mj_model, feet_geom_
     # # print(f'diff feet wrench         : {tau_mj_real - tau_contact_feet - sim_mj_data.qfrc_passive - tau_ctrl}')
     # print(f'diff feet wrench radius  : {tau_mj_real - tau_contact_feet_radius - sim_mj_data.qfrc_passive - tau_ctrl}')
     # # print(f'diff feet recompute      : {tau_mj_real - tau_contact_recompute - sim_mj_data.qfrc_passive - tau_ctrl}')
-    print(f'diff constraint contact  : {sim_mj_data.qfrc_constraint - tau_contact_recompute}')
+    # print(f'diff constraint contact  : {sim_mj_data.qfrc_constraint - tau_contact_recompute}')
     # print(f'diff component contact   : {tau_component_contact- tau_contact_recompute}')
     # val = 100 * (sim_mj_data.qfrc_constraint - tau_contact_recompute) / (tau_contact_recompute + 1e-6)
     # print(f'norm diff constraint c   : {np.array2string(np.asarray(val), precision=3, suppress_small=True)}')
@@ -322,7 +323,7 @@ def add_sim_data_to_dataset(dataset, time, sim_mj_data, sim_mj_model, feet_geom_
     return dataset, tau_mj_real
 
 def sample_reset_references(key):
-    key, key_ang, key_lin, key_amp, key_freq, key_init, key_z_offset, key_z_amp, key_z_freq = jax.random.split(key, 9)
+    key, key_ang, key_lin, key_amp, key_freq, key_init, key_z_offset, key_z_amp, key_z_freq, key_ang_offset, key_ang_amp, key_ang_freq = jax.random.split(key, 12)
 
     ref_base_ang_vel_lim = 0.4
     ref_base_ang_vel = jnp.array(
@@ -352,10 +353,21 @@ def sample_reset_references(key):
     z_amp = jax.random.uniform(key_z_amp, shape=(), minval=0.02, maxval=0.15)
     z_freq = jax.random.uniform(key_z_freq, shape=(), minval=0.1, maxval=0.3)
 
+    ang_offset_range = jnp.array([0.1, 0.1, 0.0])
+    ang_amp_range = jnp.array([0.4, 0.8, 0.0])
+    ang_freq_range = jnp.array([0.6, 1.0, 0.0])
+
+    ang_offset = jax.random.uniform(key_ang_offset, shape=ang_offset_range.shape, minval=-ang_offset_range, maxval=ang_offset_range)
+    ang_amp = jax.random.uniform(key_ang_amp, shape=ang_amp_range.shape, minval=-ang_amp_range, maxval=ang_amp_range)
+    ang_freq = jax.random.uniform(key_ang_freq, shape=ang_freq_range.shape, minval=0.1 * jnp.ones_like(ang_freq_range), maxval=ang_freq_range)
+
     extra_qref_data = {
         "z_offset": z_offset,
         "z_amp": z_amp,
-        "z_freq": z_freq
+        "z_freq": z_freq,
+        "ang_offset": ang_offset,
+        "ang_amp": ang_amp,
+        "ang_freq": ang_freq
     }
 
     q_init = jnp.concatenate([config.p0, config.quat0, config.q0])
@@ -371,6 +383,8 @@ def sample_reset_references(key):
             config.robot_height,
         ]
     )
+    if hasattr(config, "reference_generator"):
+        command = jnp.concatenate([command, jnp.array([1.0, 0.0, 0.0, 0.0])])
 
     return key, q_init, command, extra_qref_data
 
@@ -380,6 +394,13 @@ def update_z_command(command, counter, z_offset = 0.4, z_amp = 0.15, z_freq = 0.
     z_vel = 2 * jnp.pi * z_freq * z_amp * jnp.cos(2 * jnp.pi * z_freq * sin_time)
     command = command.at[6].set(z_pos)
     command = command.at[2].set(z_vel)
+    return command
+
+def update_ang_command(command, counter, ang_offset = jnp.array([0.0, 0.0, 0.0]), ang_amp = jnp.array([0.0, 0.0, 0.0]), ang_freq = jnp.array([0.0, 0.0, 0.0])):
+    sin_time = counter / sim_frequency
+    euler_ref = ang_offset + ang_amp * jnp.sin(2 * jnp.pi * ang_freq * sin_time)
+    quat_ref = rotation_utils.rpy_to_quat(euler_ref)
+    command = command.at[-4:].set(quat_ref)
     return command
 
 def main():
@@ -411,7 +432,7 @@ def main():
 
     counter = 0
     tau = jnp.zeros(config.n_joints)
-    command = jnp.zeros(7)
+    command = jnp.zeros(7) if not hasattr(config, "reference_generator") else jnp.zeros(11)
     run_dataset = init_run_dataset()
     nan_flag = False
     
@@ -471,6 +492,17 @@ def main():
                 run_dataset, tau_mj_real = add_sim_data_to_dataset(run_dataset, current_time, data, model, feet_geom_id, feet_body_id, data_aux)
                 if np.any(np.isnan(tau_mj_real)) or np.any(np.isnan(qvel)):
                     nan_flag = True
+                
+                for i in range(data.nefc):
+                    if data.efc_type[i] == mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT:
+                        joint_name = mujoco.mj_id2name(
+                                model,
+                                mujoco.mjtObj.mjOBJ_JOINT,
+                                data.efc_id[i]
+                            )
+                        if data.efc_id[i] != 7:
+                            print(f"joint limit active id {data.efc_id[i]} name {joint_name} data.efc_force[i] {data.efc_force[i]} ")
+                            nan_flag = True
 
                 # for i in range(data.nefc):
                 #     if data.efc_type[i] == mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT:
@@ -487,7 +519,8 @@ def main():
                 foot = jnp.asarray(sim_utils.geom_positions(data, contact_ids))
                 contact = jnp.asarray(sim_utils.estimate_contacts(data, contact_ids))
                 command = update_z_command(command, counter, z_offset=extra_qref_data["z_offset"], z_amp=extra_qref_data["z_amp"], z_freq=extra_qref_data["z_freq"])
-                # print(command)
+                if hasattr(config, "reference_generator"):
+                    command = update_ang_command(command, counter, ang_offset=extra_qref_data["ang_offset"][:3], ang_amp=extra_qref_data["ang_amp"][:3], ang_freq=extra_qref_data["ang_freq"][:3])
 
                 # for i in range(data.nefc):
                 #     if data.efc_type[i] != mujoco.mjtConstraint.mjCNSTR_CONTACT_ELLIPTIC:
@@ -533,6 +566,8 @@ def main():
     nsamples = int(n_runs * run_length_time * dataset_frequency)
     filename = f"samples_{nsamples}_n_runs_{n_runs}_data_freq_{int(dataset_frequency)}"
     filename += f"_sim_freq_{int(sim_frequency)}_total_time_{int(run_length_time)}_base_full_arm"
+    if hasattr(config, "reference_generator"):
+        filename += "_ang_ref_v0"
     filename += "_contact_Proj.pkl"
 
     with open(folder_name + filename, "wb") as fp:
