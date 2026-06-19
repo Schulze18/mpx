@@ -38,9 +38,6 @@ def _build_solve_fn(mpc):
 
     return solve_mpc
 
-x_pred = []
-x_true = []
-base_marker_ids = None
 
 
 def main(headless=False, steps=500, scene="flat"):
@@ -96,7 +93,6 @@ def main(headless=False, steps=500, scene="flat"):
             contact = jnp.asarray(sim_utils.estimate_contacts(data, contact_ids))
             print(f"Contact: {contact}")
             print(foot)
-            print(f"Base position: {qpos[:3]}")
             print(f"Command: {command}")
             
             start = timer()
@@ -116,9 +112,6 @@ def main(headless=False, steps=500, scene="flat"):
             q_ref = mpc_data.X0[0, 7 : 7 + config.n_joints]
             print(f"MPC time: {1e3 * (stop - start):.2f} ms")
 
-            x_pred.append(mpc_data.X0[0])
-            x_true.append(jnp.concatenate([qpos, qvel]))
-
         data.ctrl = np.asarray(tau)
         mujoco.mj_step(model, data)
         counter += 1
@@ -133,9 +126,6 @@ def main(headless=False, steps=500, scene="flat"):
         data,
         key_callback=command_handle.key_callback,
     ) as viewer:
-        base_marker_ids = None
-        base_pred_marker_ids = None
-        pred_foot_marker_ids = None
         viewer.sync()
         while viewer.is_running():
             overlay_text = command_handle.consume_overlay_text()
@@ -148,42 +138,7 @@ def main(headless=False, steps=500, scene="flat"):
                 sleep_time = model.opt.timestep - (toc - tic)
                 time.sleep(sleep_time)
 
-            base_pos = data.qpos[:3].reshape(1, 3)
-            base_marker_diameter = float(np.clip(0.03 * model.stat.extent, 0.01, 0.06))
-            base_marker_ids = sim_utils.render_sphere_trajectory(
-                viewer,
-                base_pos,
-                np.ones(base_pos.shape[0], dtype=np.float64),
-                diameter=base_marker_diameter,
-                color=np.array([1.0, 0.0, 0.0, 1.0]),
-                geom_ids=base_marker_ids
-            )
-
-            base_pos_pred = mpc_data.X0[:, :3].reshape(-1, 3)
-            base_pred_marker_ids= sim_utils.render_sphere_trajectory(
-                viewer,
-                base_pos_pred,
-                np.ones(base_pos_pred.shape[0], dtype=np.float64),
-                diameter=base_marker_diameter,
-                # red color for predicted base position
-                color=np.array([0.0, 1.0, 0.0, 1.0]),
-                geom_ids=base_pred_marker_ids
-            )
-
-            pred_foot_pos = mpc_data.X0[:, mpc.foot_slice].reshape(-1, 3)
-            pred_foot_marker_ids = sim_utils.render_sphere_trajectory(
-                viewer,
-                pred_foot_pos,
-                np.ones(pred_foot_pos.shape[0], dtype=np.float64),
-                diameter=base_marker_diameter,
-                # blue color for predicted foot positions
-                color=np.array([0.0, 0.0, 1.0, 1.0]),
-                geom_ids=pred_foot_marker_ids
-            )
-
-
             viewer.sync()
-
 
 
 if __name__ == "__main__":

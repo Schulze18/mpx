@@ -141,22 +141,6 @@ def reference_generator(use_terrain_estimator,N,dt,n_joints,n_contact,mass,foot0
     liftoff = liftoff.at[1::3].set(liftoff_y)
     liftoff = liftoff.at[2::3].set(liftoff_z)
 
-    # ## Reference for the arm
-    # nq_arm = 7
-    # arm_amp_ref = jnp.array([2.0, 0.5, 0.4, 0.6, 0.7, 0.8, 0.5])
-    # arm_freq_ref = jnp.array([0.2, 1.0, 1.2, 0.8, 0.9, 1.0, 0.5])
-    # larm_index = 0
-    # def arm_fn(t, carry):
-    #     q_ref = carry
-    #     #
-    #     time_n = t * dt + current_time
-    #     arm_pos = arm_amp_ref * jnp.sin(2 * jnp.pi * arm_freq_ref * time_n) + q0[larm_index:larm_index+nq_arm]
-
-    #     q_ref = q_ref.at[t,larm_index:larm_index+nq_arm].set(arm_pos)
-    #     return (q_ref)
-    # init_carry = q_ref
-    # q_ref = jax.lax.fori_loop(0, N+1, arm_fn, init_carry)
-
     if extra_qref_fn is not None:
         q_ref = extra_qref_fn(q_ref, current_time, extra_qref_data)
 

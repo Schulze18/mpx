@@ -123,9 +123,6 @@ def main(headless=False, steps=500, scene="flat"):
         key_callback=command_handle.key_callback,
     ) as viewer:
         viewer.sync()
-        base_marker_ids = None
-        base_pred_marker_ids = None
-        pred_foot_marker_ids = None
         while viewer.is_running():
             overlay_text = command_handle.consume_overlay_text()
             tic = timer()
@@ -136,39 +133,6 @@ def main(headless=False, steps=500, scene="flat"):
             if toc - tic < model.opt.timestep:
                 sleep_time = model.opt.timestep - (toc - tic)
                 time.sleep(sleep_time)
-
-            base_pos = data.qpos[:3].reshape(1, 3)
-            base_marker_diameter = float(np.clip(0.03 * model.stat.extent, 0.01, 0.06))
-            base_marker_ids = sim_utils.render_sphere_trajectory(
-                viewer,
-                base_pos,
-                np.ones(base_pos.shape[0], dtype=np.float64),
-                diameter=base_marker_diameter,
-                color=np.array([1.0, 0.0, 0.0, 1.0]),
-                geom_ids=base_marker_ids
-            )
-
-            base_pos_pred = mpc_data.X0[:, :3].reshape(-1, 3)
-            base_pred_marker_ids= sim_utils.render_sphere_trajectory(
-                viewer,
-                base_pos_pred,
-                np.ones(base_pos_pred.shape[0], dtype=np.float64),
-                diameter=base_marker_diameter,
-                # red color for predicted base position
-                color=np.array([0.0, 1.0, 0.0, 1.0]),
-                geom_ids=base_pred_marker_ids
-            )
-
-            pred_foot_pos = mpc_data.X0[:, mpc.foot_slice].reshape(-1, 3)
-            pred_foot_marker_ids = sim_utils.render_sphere_trajectory(
-                viewer,
-                pred_foot_pos,
-                np.ones(pred_foot_pos.shape[0], dtype=np.float64),
-                diameter=base_marker_diameter,
-                # blue color for predicted foot positions
-                color=np.array([0.0, 0.0, 1.0, 1.0]),
-                geom_ids=pred_foot_marker_ids
-            )
 
             viewer.sync()
 

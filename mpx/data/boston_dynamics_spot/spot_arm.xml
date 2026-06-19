@@ -70,8 +70,6 @@
   <default>
     <default class="spot">
       <geom solref="0.004 1"/>
-      <joint actuatorfrcrange="-1000 1000"/>
-      <position kp="500" kv="40" inheritrange="1"/>
       <default class="visual">
         <geom group="2" type="mesh" contype="0" conaffinity="0"/>
       </default>
@@ -82,6 +80,21 @@
             friction="0.8 0.02 0.01"/>
         </default>
       </default>
+    </default>
+
+    <joint damping="0.6" armature="0.01" frictionloss="0.2"/>
+
+    <default class="hip">
+        <motor ctrlrange="-144.4 144.4"/>
+    </default>
+    <default class="thigh">
+        <motor ctrlrange="-135.278 135.278"/>
+    </default>
+    <default class="calf">
+        <motor ctrlrange="-135.278 135.278"/>
+    </default>
+    <default class="arm">
+      <motor ctrlrange="-100 100"/>
     </default>
   </default>
 
@@ -136,7 +149,7 @@
                   <body name="arm_link_wr1">
                     <inertial pos="0.125168 0.000101374 -0.013998" quat="1 1 1 1" mass="0.785"
                       diaginertia="0.00176281 0.00168181 0.000767414"/>
-                    <!-- <joint name="arm_wr1" axis="1 0 0" range="-2.87979 2.87979"/> -->
+                    <joint name="arm_wr1" axis="1 0 0" range="-2.87979 2.87979"/>
                     <geom mesh="arm_link_wr1_0" material="wrap" class="visual"/>
                     <geom mesh="arm_link_wr1_1" material="BlackAbs" class="visual"/>
                     <!-- <geom class="collision" mesh="arm_link_wr1_coll"/>
@@ -146,7 +159,7 @@
                     <body name="arm_link_fngr" pos="0.11745 0 0.01482">
                       <inertial pos="0.0478787 -0.000206768 -0.0162879" quat="0 1 0 1" mass="0.2"
                         diaginertia="0.000391278 0.000300713 0.000143996"/>
-                      <!-- <joint name="arm_f1x" axis="0 1 0" range="-1.57 0"/> -->
+                      <joint name="arm_f1x" axis="0 1 0" range="-1.57 0"/>
                       <geom mesh="arm_link_fngr_0" material="wrap" class="visual"/>
                       <geom mesh="arm_link_fngr_1" material="BlackAbs" class="visual"/>
                       <!-- <geom class="collision" mesh="left_hinge_coll"/>
@@ -241,7 +254,7 @@
             <inertial pos="0.00225794 4.6076e-05 -0.180082" quat="1 0 0 1" mass="0.35"
               diaginertia="0.00405032 0.00399902 0.00014934"/>
             <joint name="hr_kn" axis="0 1 0" range="-2.7929 -0.248282"/>
-            <geom material="BlackAbs" mesh="rear_left_lower_leg" class="visual"/>
+            <geom material="BlackAbs" mesh="rear_right_lower_leg" class="visual"/>
             <!-- <geom mesh="right_lower_leg_collision" class="collision"/> -->
             <geom name="HR" class="foot"/>
           </body>
@@ -251,65 +264,64 @@
   </worldbody>
 
   <contact>
+    <exclude body1="body" body2="arm_link_sh0"/>
+    <exclude body1="body" body2="arm_link_sh1"/>
+    <exclude body1="body" body2="arm_link_el0"/>
+    <exclude body1="body" body2="arm_link_el1"/>
+    <exclude body1="body" body2="arm_link_wr0"/>
+    <exclude body1="body" body2="arm_link_wr1"/>
     <exclude body1="body" body2="fl_uleg"/>
     <exclude body1="body" body2="fr_uleg"/>
     <exclude body1="body" body2="hl_uleg"/>
     <exclude body1="body" body2="hr_uleg"/>
+    <exclude body1="body" body2="fl_lleg"/>
+    <exclude body1="body" body2="fr_lleg"/>
+    <exclude body1="body" body2="hl_lleg"/>
+    <exclude body1="body" body2="hr_lleg"/>
+    <exclude body1="body" body2="fl_hip"/>
+    <exclude body1="body" body2="fr_hip"/>
+    <exclude body1="body" body2="hl_hip"/>
+    <exclude body1="body" body2="hr_hip"/>
   </contact>
 
   <actuator>
-    <position class="spot" name="fl_hx" joint="fl_hx"/>
-    <position class="spot" name="fl_hy" joint="fl_hy"/>
-    <position class="spot" name="fl_kn" joint="fl_kn"/>
-    <position class="spot" name="fr_hx" joint="fr_hx"/>
-    <position class="spot" name="fr_hy" joint="fr_hy"/>
-    <position class="spot" name="fr_kn" joint="fr_kn"/>
-    <position class="spot" name="hl_hx" joint="hl_hx"/>
-    <position class="spot" name="hl_hy" joint="hl_hy"/>
-    <position class="spot" name="hl_kn" joint="hl_kn"/>
-    <position class="spot" name="hr_hx" joint="hr_hx"/>
-    <position class="spot" name="hr_hy" joint="hr_hy"/>
-    <position class="spot" name="hr_kn" joint="hr_kn"/>
+    <motor name="arm_sh0"   class="arm"    gear="1" joint="arm_sh0"/>
+    <motor name="arm_sh1"   class="arm"    gear="1" joint="arm_sh1"/>
+    <motor name="arm_el0"   class="arm"    gear="1" joint="arm_el0"/>
+    <motor name="arm_el1"   class="arm"    gear="1" joint="arm_el1"/>
+    <motor name="arm_wr0"   class="arm"    gear="1" joint="arm_wr0"/>
+    <motor name="arm_wr1"   class="arm"    gear="1" joint="arm_wr1"/>
+    <motor name="arm_f1x"   class="arm"    gear="1" joint="arm_f1x"/>
 
-    <position class="spot" name="arm_sh0" joint="arm_sh0"/>
-    <position class="spot" name="arm_sh1" joint="arm_sh1"/>
-    <position class="spot" name="arm_el0" joint="arm_el0"/>
-    <position class="spot" name="arm_el1" joint="arm_el1"/>
-    <position class="spot" name="arm_wr0" joint="arm_wr0"/>
-    <!-- <position class="spot" name="arm_wr1" joint="arm_wr1"/>
-    <position class="spot" name="arm_f1x" joint="arm_f1x"/> -->
+    <motor class="hip" gear="1" name="fl_hx" joint="fl_hx"/>
+    <motor class="thigh" gear="1" name="fl_hy" joint="fl_hy"/>
+    <motor class="calf" gear="1" name="fl_kn" joint="fl_kn"/>
+    <motor class="hip" gear="1" name="fr_hx" joint="fr_hx"/>
+    <motor class="thigh" gear="1" name="fr_hy" joint="fr_hy"/>
+    <motor class="calf" gear="1" name="fr_kn" joint="fr_kn"/>
+    <motor class="hip" gear="1" name="hl_hx" joint="hl_hx"/>
+    <motor class="thigh" gear="1" name="hl_hy" joint="hl_hy"/>
+    <motor class="calf" gear="1" name="hl_kn" joint="hl_kn"/>
+    <motor class="hip" gear="1" name="hr_hx" joint="hr_hx"/>
+    <motor class="thigh" gear="1" name="hr_hy" joint="hr_hy"/>
+    <motor class="calf" gear="1" name="hr_kn" joint="hr_kn"/>
   </actuator>
 
   <keyframe>
-    <!-- <key name="home"
-      qpos="
-    0 0 0.46
-    1 0 0 0
-    0 1.04 -1.8
-    0 1.04 -1.8
-    0 1.04 -1.8
-    0 1.04 -1.8
-    0 -3.14 3.06 0 0 0 0"
-      ctrl="
-    0 1.04 -1.8
-    0 1.04 -1.8
-    0 1.04 -1.8
-    0 1.04 -1.8
-    0 -3.14 3.06 0 0 0 0"/> -->
     <key name="home"
       qpos="
     0 0 0.46
     1 0 0 0
+    0 -3.14 3.06 0 0 0 0
     0 1.04 -1.8
     0 1.04 -1.8
     0 1.04 -1.8
-    0 1.04 -1.8
-    0 -3.14 3.06 0 0"
+    0 1.04 -1.8"
       ctrl="
+    0 -3.14 3.06 0 0 0 0
     0 1.04 -1.8
     0 1.04 -1.8
     0 1.04 -1.8
-    0 1.04 -1.8
-    0 -3.14 3.06 0 0"/>
+    0 1.04 -1.8"/>
   </keyframe>
 </mujoco>
