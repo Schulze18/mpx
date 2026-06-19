@@ -76,13 +76,14 @@ The first time running the script it can take more than a minute to JIT the solv
 ## Citing this work
 
 ```bibtex
-@misc{2025primaldualilqrgpuacceleratedlearning,
-      title={Primal-Dual iLQR for GPU-Accelerated Learning and Control in Legged Robots}, 
-      author={Lorenzo Amatucci and João Sousa-Pinto and Giulio Turrisi and Dominique Orban and Victor Barasuol and Claudio Semini},
-      year={2025},
-      eprint={2506.07823},
-      archivePrefix={arXiv},
-      primaryClass={cs.RO},
-      url={https://arxiv.org/abs/2506.07823}, 
+@article{amatuccisousa26ral,
+ author={Amatucci, Lorenzo and Sousa-Pinto, João and Turrisi, Giulio and Orban, Dominique and Barasuol, Victor and Semini, Claudio},
+ title={Primal-Dual iLQR for GPU-Accelerated Learning and Control in Legged Robots},
+ year={2026},
+ volume={11},
+ number={1},
+ pages={1010-1017},
+ journal={IEEE Robotics and Automation Letters},
+ doi={10.1109/LRA.2025.3632610}
 }
 ```
