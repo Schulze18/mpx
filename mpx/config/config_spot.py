@@ -7,9 +7,12 @@ import jax.numpy as jnp
 import mpx.utils.models as mpc_dyn_model
 import mpx.utils.objectives as mpc_objectives
 
-
+spot_with_arm_base = False
 dir_path = os.path.dirname(os.path.realpath(__file__))
-model_path = os.path.abspath(os.path.join(dir_path, "..")) + "/data/boston_dynamics_spot/scene.xml"
+if spot_with_arm_base:
+    model_path = os.path.abspath(os.path.join(dir_path, "..")) + "/data/boston_dynamics_spot/scene_arm_base.xml"
+else:
+    model_path = os.path.abspath(os.path.join(dir_path, "..")) + "/data/boston_dynamics_spot/scene.xml"
 
 # Contact frame names and body names for the Spot feet / lower legs.
 contact_frame = ["FL", "FR", "HL", "HR"]
@@ -29,6 +32,10 @@ step_freq = 1.35
 step_height = 0.12
 initial_height = 0.43
 robot_height = 0.42
+
+timer_t = jnp.array([0.25, 0.0, 0.5, 0.75])  # Ordered as: [FL, FR, RL, RR]
+duty_factor = 0.8 
+step_freq = 0.5
 
 # Initial base state and nominal joint posture.
 p0 = jnp.array([0.0, 0.0, initial_height])
@@ -89,6 +96,10 @@ Q_grf = jnp.diag(jnp.ones(3*n_contact)) * 1e-3 # Cost matrix for ground reaction
 
 # For the leg contact cost, repeat the unit cost for each contact point.
 Qleg = jnp.diag(jnp.tile(jnp.array([1e4,1e4,1e5]),n_contact))
+
+if jnp.sum(timer_t) > 1.0:
+    Q_grf = jnp.diag(jnp.ones(3*n_contact)) * 1e-2
+    Qdp   = jnp.diag(jnp.array([1, 1, 1])) * 1e3  # Cost matrix for position derivatives
 
 W = jax.scipy.linalg.block_diag(Qp, Qrot, Qq, Qdp, Qomega, Qdq, Qleg, Qtau, Q_grf)
 

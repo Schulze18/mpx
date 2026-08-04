@@ -6,6 +6,7 @@ import jax.numpy as jnp
 
 import mpx.utils.models as mpc_dyn_model
 import mpx.utils.objectives as mpc_objectives
+import mpx.utils.excitation_ref as exc_ref
 
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -31,11 +32,17 @@ step_height = 0.12
 # robot_height = 0.40
 initial_height = 0.46
 robot_height = 0.46
+# initial_height = 0.46
+# robot_height = 0.35
+
+timer_t = jnp.array([0.25, 0.0, 0.5, 0.75])  # Ordered as: [FL, FR, RL, RR]
+duty_factor = 0.8 
+step_freq = 0.5
 
 # Initial base state and nominal joint posture.
 p0 = jnp.array([0.0, 0.0, initial_height])
 quat0 = jnp.array([1.0, 0.0, 0.0, 0.0])
-q0 = jnp.array([0, -2.14, 2.06, 0, 0, 0, 0, 0.1, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8])
+q0 = jnp.array([0, -2.14, 2.06, 0, 0, 0, 0, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8, 0.0, 1.04, -1.8])
 q0_init = q0
 
 # Nominal foot positions in the body frame at the home posture.
@@ -86,6 +93,10 @@ Q_grf = jnp.diag(jnp.ones(3*n_contact)) * 1e-3 # Cost matrix for ground reaction
 # For the leg contact cost, repeat the unit cost for each contact point.
 Qleg = jnp.diag(jnp.tile(jnp.array([1e4,1e4,1e5]),n_contact))
 
+if jnp.sum(timer_t) > 1.0:
+    Q_grf = jnp.diag(jnp.ones(3*n_contact)) * 1e-2
+    Qdp   = jnp.diag(jnp.array([1, 1, 1])) * 5e2  # Cost matrix for position derivatives
+
 W = jax.scipy.linalg.block_diag(Qp, Qrot, Qq, Qdp, Qomega, Qdq, Qleg, Qtau, Q_grf)
 
 use_terrain_estimation = False
@@ -119,7 +130,7 @@ extra_qref_data = {
     "joint_index": jnp.arange(7, dtype=jnp.int32),
 }
 
-def extra_qref_fn(q_ref, current_time, data):
+def extra_qref_sin_fn(q_ref, current_time, data):
     if data is None:
         return q_ref
 
@@ -140,5 +151,48 @@ def extra_qref_fn(q_ref, current_time, data):
     return q_ref
 
 
+def extra_qref_fourier_fn(q_ref, current_time, data):
+    if data is None:
+        return q_ref
+
+    arm_fourier_params = data["arm_fourier_params"]
+
+    t_array = jnp.arange(N+1) * dt + current_time
+    q_arm_ref = exc_ref.generate_fourier_traj(t_array, params=arm_fourier_params)
+
+    # def arm_fn(t, carry):
+    #     q_ref = carry
+    #     #
+    #     time_n = t * dt + current_time
+    #     arm_pos = arm_amp_ref * jnp.sin(2 * jnp.pi * arm_freq_ref * time_n) + q0[arm_joint_index]
+
+    #     q_ref = q_ref.at[t,arm_joint_index].set(arm_pos)
+    #     return (q_ref)
+    # init_carry = q_ref
+    # q_ref = jax.lax.fori_loop(0, N+1, arm_fn, init_carry)
+    
+    # q_ref is (N, n_joints), while q_arm_ref is (N, 7) for the arm joints. We need to insert the arm joint references into the correct indices of q_ref.
+    arm_joint_index = data["joint_index"]
+    abs_idx = arm_joint_index
+    
+    # Check if q_arm_ref varies over time
+    # q_arm_ref_var = jnp.var(q_arm_ref, axis=0)  # variance across time for each joint
+    # q_arm_ref_min = jnp.min(q_arm_ref, axis=0)
+    # q_arm_ref_max = jnp.max(q_arm_ref, axis=0)
+    # jax.debug.print("q_arm_ref : {}", q_arm_ref)
+    # jax.debug.print("q_arm_ref variance per joint: {}", q_arm_ref_var)
+    # jax.debug.print("q_arm_ref min: {}", q_arm_ref_min)
+    # jax.debug.print("arm_joint_index: {}", arm_joint_index)
+    # jax.debug.print("q_arm_ref max: {}", q_arm_ref_max, ordered=True)
+
+    # jax.debug.print("q_ref : {}", q_ref, ordered=True)
+    q_ref = q_ref.at[:, abs_idx].add(q_arm_ref)
+    # jax.debug.print("q_ref add : {}", q_ref, ordered=True)
+    return q_ref
+
 import mpx.utils.mpc_utils as mpc_utils
 reference_generator = mpc_utils.reference_generator_orientation
+
+# ref_type = "sin" # "sin"
+ref_type = "fourier" # "sin"
+extra_qref_fn = extra_qref_fourier_fn if ref_type == "fourier" else extra_qref_sin_fn
