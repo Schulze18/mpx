@@ -119,12 +119,12 @@ def generate_fourier_traj(t, params, return_vel=False):
         t_exp = t[:, None]  # (T, 1)
         
         # Compute sine and cosine components
-        sin_term = jnp.sin(2 * omega_f * k * t_exp + phi0[None, :])  # (T, njoints)
-        cos_term = jnp.cos(2 * omega_f * k * t_exp + phi0[None, :])  # (T, njoints)
+        sin_term = jnp.sin(omega_f * k * t_exp + phi0[None, :])  # (T, njoints)
+        cos_term = jnp.cos(omega_f * k * t_exp + phi0[None, :])  # (T, njoints)
         
         # Add Fourier components: A_k/w_k * sin(...) - B_k/w_k * cos(...)
-        q = q + (sin_term * A[k - 1, :][None, :] / (2 * omega_f * k) - 
-                 cos_term * B[k - 1, :][None, :] / (2 * omega_f * k))
+        q = q + (sin_term * A[k - 1, :][None, :] / (omega_f * k) - 
+                 cos_term * B[k - 1, :][None, :] / (omega_f * k))
         # if k == 1:
         #     import sys
         #     print(f"[excitation_ref] k={k}: sin_term[0]: {sin_term[0]}, A[0]: {A[k-1]}, contribution: {(sin_term[0] * A[k - 1, :] / (2 * omega_f * k))}", file=sys.stderr)
@@ -133,9 +133,9 @@ def generate_fourier_traj(t, params, return_vel=False):
         qd = jnp.zeros_like(q)
         for k in range(1, order + 1):
             t_exp = t[:, None]  # (T, 1)
-            # sin_term = jnp.sin(omega_f * k * t_exp + phi0[None, :])  # (T, njoints)
-            # cos_term = jnp.cos(omega_f * k * t_exp + phi0[None, :])  # (T, njoints)
-            qd = qd + (cos_term * A[k - 1, :][None, :] -
+            sin_term = jnp.sin(omega_f * k * t_exp + phi0[None, :])  # (T, njoints)
+            cos_term = jnp.cos(omega_f * k * t_exp + phi0[None, :])  # (T, njoints)
+            qd = qd + (cos_term * A[k - 1, :][None, :] +
                        sin_term * B[k - 1, :][None, :])
         return q, qd
     return q

@@ -30,8 +30,8 @@ timer_t = jnp.array([0.5, 0.0, 0.0, 0.5])
 duty_factor = 0.65
 step_freq = 1.35
 step_height = 0.12
-initial_height = 0.43
-robot_height = 0.42
+initial_height = 0.46
+robot_height = 0.46
 
 timer_t = jnp.array([0.25, 0.0, 0.5, 0.75])  # Ordered as: [FL, FR, RL, RR]
 duty_factor = 0.8 

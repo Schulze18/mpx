@@ -47,7 +47,7 @@ dataset_frequency = 100.0
 
 gait_mode = 'walk' if jnp.sum(config.timer_t) > 1.0 else 'trot'
 
-cmd_ref =  False
+cmd_ref = False #'fourier'
 base_ref_fixed = False
 seed = 42 if cmd_ref == 'fourier' else 0
 rand_step_freq = True
@@ -522,7 +522,7 @@ def sample_fourier_reset_references(key):
     ang_order = 3
     ang_duration_max = jnp.array([10.0, 10.0])
     ang_duration = jax.random.uniform(key_ang_freq, shape=ang_duration_max.shape, minval=0.5 * ang_duration_max, maxval=ang_duration_max)
-    ang_fourier_params = exc_ref.generate_random_param(order=ang_order, njoints=2, param_range=2*jnp.array([0.6, 1.4]), key=key_ang_fourier)
+    ang_fourier_params = exc_ref.generate_random_param(order=ang_order, njoints=2, param_range=jnp.array([0.6, 1.4]), key=key_ang_fourier)
     ang_offset = jax.random.uniform(key_ang_offset, shape=ang_offset_range.shape, minval=-ang_offset_range, maxval=ang_offset_range)
     ang_fourier_params.append(ang_duration)
     ang_fourier_params.append(ang_offset[:2]) # only roll and pitch
@@ -537,7 +537,7 @@ def sample_fourier_reset_references(key):
         z_duration = jax.random.uniform(key_z_freq, minval=2.0, maxval=5.0) # for standing
     else:
         z_duration = jax.random.uniform(key_z_freq, minval=5.0, maxval=10.0)
-    z_fourier_params = exc_ref.generate_random_param(order=z_order, njoints=1, param_range=jnp.array([0.7]), key=key_z_fourier)
+    z_fourier_params = exc_ref.generate_random_param(order=z_order, njoints=1, param_range=jnp.array([0.3]), key=key_z_fourier)
     delta_z_offset = jax.random.uniform(key_z_offset, shape=(), minval=-0.04, maxval=0.04)
     z_offset = config.robot_height + delta_z_offset
 
@@ -552,7 +552,8 @@ def sample_fourier_reset_references(key):
     # arm_range = jnp.ones_like(jnp.array([2.0, 1.0, 0.6, 2.0, 1.0, 1.2, 0]))
     # arm_range = 5.0*jnp.array([2.0, 1.0, 0.6, 2.0, 1.0, 1.2, 0])
     # arm_range = 5.0*jnp.array([5.0, 1.0, 0.6, 2.0, 1.0, 1.2, 0])
-    arm_range = 5.0*jnp.array([2.0, 1.0, 0.8, 2.0, 1.0, 1.2, 0])
+    # arm_range = 5.0*jnp.array([2.0, 1.0, 0.8, 2.0, 1.0, 1.2, 0])
+    arm_range = 2.5*jnp.array([2.0, 1.0, 0.8, 2.0, 1.0, 1.2, 0])
     arm_offset = jax.random.uniform(key_arm_offset, shape=arm_range.shape, minval=-2.0, maxval=2.0)
     # arm_offset = arm_offset.at[1:].set(0.0) # only first joint has offset
     # arm_offset = arm_offset + q_init[7 + joint_index]
@@ -570,7 +571,7 @@ def sample_fourier_reset_references(key):
     key, key_xy_freq, key_xy_fourier, _ = jax.random.split(key, 4)
     xy_order = 3
     xy_duration = jax.random.uniform(key_xy_freq, minval=5.0, maxval=10.0)
-    xy_range = 10*jnp.array([0.5, 0.5])
+    xy_range = 1.5*jnp.array([0.5, 0.3])
     xy_fourier_params = exc_ref.generate_random_param(order=xy_order, njoints=2, param_range=xy_range, key=key_xy_fourier)
     xy_fourier_params.append(xy_duration)
     xy_fourier_params.append(jnp.array([0.0, 0.0]))
@@ -1084,7 +1085,7 @@ def main():
     # if reference with orientation:
     if hasattr(config, "reference_generator"):
         if config.ref_type == "fourier":
-            filename += "_ang_ref_fourier_v1"
+            filename += "_ang_ref_fourier_v2_fix"
         else:
             filename += "_ang_ref_v0_test"
 
